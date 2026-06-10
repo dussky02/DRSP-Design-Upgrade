@@ -1,0 +1,6 @@
+{
+  "name": "ДРСП Дизайн апгрейд",
+  "description": "Сервис оценки компетенций и карьерного трекинга дизайнеров с гибким соответствием грейдам и индивидуальными планами развития.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
