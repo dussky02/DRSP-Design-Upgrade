@@ -344,7 +344,7 @@ export default function DesignerProfile({
               </div>
 
               <p className="text-xs text-slate-600 leading-relaxed">
-                Автоматически сформированный список навыков с наивысшим <strong>Индексом Приоритета</strong> для получения следующего профиля. Навыки отсортированы на основе величины отставания, умноженной на значимость (вес) навыка на будущей должности профиля. Опережайте ожидания бизнеса, прокачивая топ-позиции первыми:
+                Автоматически сформированный список навыков с наивысшим <strong>Индексом Приоритета</strong> для получения следующего профиля. Навыки отсортированы на основе величины отставания, умноженной на его весовой коэффициент. Опережайте ожидания бизнеса, прокачивая топ-позиции первыми:
               </p>
 
               <div className="space-y-3 pt-2">
@@ -380,7 +380,7 @@ export default function DesignerProfile({
                           Целевой балл: <strong className="font-extrabold">{idp.targetLevel}</strong>
                         </div>
                         <div className="text-slate-400 text-[11px]">
-                          Вес роли: <span className="font-semibold text-slate-800">{idp.weight}</span>
+                          Вес навыка: <span className="font-semibold text-slate-800">{idp.weight}</span>
                         </div>
                       </div>
                     </div>

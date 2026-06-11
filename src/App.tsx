@@ -48,16 +48,50 @@ export default function App() {
     };
   });
 
-  // 2. Routing and navigation states
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // 2. Fetch server-side state on initialization
+  useEffect(() => {
+    const fetchState = async () => {
+      try {
+        const res = await fetch('/api/state');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.categories && data.skills) {
+            setAppState(data);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading state from server:', error);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+    fetchState();
+  }, []);
+
+  // Sync state back to LocalStorage and Server whenever it changes
+  useEffect(() => {
+    if (!isLoaded) return;
+    
+    localStorage.setItem('drsp_design_upgrade_state', JSON.stringify(appState));
+    
+    fetch('/api/state', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(appState)
+    }).catch(err => {
+      console.error('Error syncing state to server:', err);
+    });
+  }, [appState, isLoaded]);
+
+  // 3. Routing and navigation states
   const [viewMode, setViewMode] = useState<AppViewMode>('lead');
   const [selectedSessionId, setSelectedSessionId] = useState<string>('sess-summer-2026');
   const [selectedDesignerId, setSelectedDesignerId] = useState<string>('eval-designer-ivan');
   const [leadSubTab, setLeadSubTab] = useState<'competencies' | 'profiles' | 'sessions' | 'calibrations' | 'analytics'>('competencies');
-
-  // Sync state back to LocalStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('drsp_design_upgrade_state', JSON.stringify(appState));
-  }, [appState]);
 
   // 3. Coordinate URL parameters parsing (Scenario 1.3 / Isolated Link parsing)
   useEffect(() => {
@@ -197,6 +231,15 @@ export default function App() {
     // Redirect designer directly to see their submitted answers / personal profile
     handleViewChange('designer-profile', undefined, newEvalId);
   };
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center font-sans space-y-4">
+        <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs font-bold text-slate-500">Загрузка данных сессии...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans select-text selection:bg-indigo-100 selection:text-indigo-900">

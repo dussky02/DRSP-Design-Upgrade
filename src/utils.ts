@@ -30,7 +30,8 @@ export function calculateCategoryCoverage(
 
   for (const req of categoryReqs) {
     const target = req.targetLevel;
-    const weight = req.weight;
+    const skill = skills.find(s => s.id === req.skillId);
+    const weight = skill ? skill.weight : 0;
     const rawFact = scores[req.skillId] ?? 0;
 
     // Apply rule: if Fact > Target, cap at Target
@@ -103,12 +104,13 @@ export function calculateIDPPriorities(
       const skill = skills.find(s => s.id === req.skillId);
       if (skill) {
         const gap = target - currentScore;
-        const priorityIndex = gap * req.weight;
+        const weight = skill.weight ?? 0;
+        const priorityIndex = gap * weight;
         list.push({
           skill,
           currentScore,
           targetLevel: target,
-          weight: req.weight,
+          weight,
           priorityIndex: Math.round(priorityIndex * 100) / 100
         });
       }

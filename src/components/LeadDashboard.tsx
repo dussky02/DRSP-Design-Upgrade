@@ -66,6 +66,7 @@ export default function LeadDashboard({
   const [skillTitle, setSkillTitle] = useState('');
   const [skillDesc, setSkillDesc] = useState('');
   const [skillCatId, setSkillCatId] = useState('');
+  const [skillWeight, setSkillWeight] = useState<number>(0.20);
   const [skillLevels, setSkillLevels] = useState<[string, string, string, string, string]>([
     'Уровень 0: ', 'Уровень 1: ', 'Уровень 2: ', 'Уровень 3: ', 'Уровень 4: '
   ]);
@@ -75,7 +76,7 @@ export default function LeadDashboard({
   const [profTitle, setProfTitle] = useState('');
   const [profDesc, setProfDesc] = useState('');
   const [profNextId, setProfNextId] = useState('');
-  const [profRequirements, setProfRequirements] = useState<{ skillId: string; targetLevel: number; weight: number }[]>([]);
+  const [profRequirements, setProfRequirements] = useState<{ skillId: string; targetLevel: number }[]>([]);
 
   // Creating session state
   const [newSessionTitle, setNewSessionTitle] = useState('');
@@ -150,9 +151,11 @@ export default function LeadDashboard({
     const skillData = skills.map(skill => {
         const cat = categories.find(c => c.id === skill.categoryId);
         return {
+            'ID': skill.id,
             'Category': cat?.title || '',
             'Skill Title': skill.title,
             'Description': skill.description,
+            'Weight': skill.weight,
             'Level 0': skill.levels[0],
             'Level 1': skill.levels[1],
             'Level 2': skill.levels[2],
@@ -168,7 +171,10 @@ export default function LeadDashboard({
             'Title': profile.title,
             'Description': profile.description,
             'Next Profile ID': profile.nextProfileId || '',
-            'Requirements': JSON.stringify(profile.requirements)
+            'Requirements': JSON.stringify(profile.requirements.map(req => ({
+                skillId: req.skillId,
+                targetLevel: req.targetLevel
+            })))
         };
     });
 
@@ -260,7 +266,7 @@ export default function LeadDashboard({
   };
 
   const applyImportChanges = () => {
-    // Apply Categories
+    // 1. Apply Categories
     let updatedCategories = [...categories];
     pendingImportCategoriesRows.forEach((row: any) => {
         const title = row['Title'] || '';
@@ -281,41 +287,27 @@ export default function LeadDashboard({
         }
     });
 
-    // Apply Profiles
-    let updatedProfiles = [...profiles];
-    pendingImportProfilesRows.forEach((row: any) => {
-        const title = row['Title'] || '';
-        const index = updatedProfiles.findIndex(p => p.title === title);
-        
-        const profileData = {
-            title: title,
-            description: row['Description'] || '',
-            nextProfileId: row['Next Profile ID'] || undefined,
-            requirements: row['Requirements'] ? JSON.parse(row['Requirements']) : []
-        };
-        
-        if (index > -1) {
-            updatedProfiles[index] = { ...updatedProfiles[index], ...profileData };
-        } else {
-            updatedProfiles.push({
-                id: row['ID'] || `profile-${Date.now()}-${Math.random()}`,
-                ...profileData
-            });
-        }
-    });
-
-    // Apply Skills
+    // 2. Apply Skills (Process Skills before Profiles, so Profile Requirements have a valid up-to-date Skill list)
     let updatedSkills = [...skills];
     pendingImportSkillsRows.forEach((row: any) => {
         const title = row['Skill Title'] || '';
-        const index = updatedSkills.findIndex(s => s.title === title);
+        const idVal = row['ID'] || row['id'] || '';
+        let index = -1;
+        if (idVal) {
+            index = updatedSkills.findIndex(s => s.id === idVal);
+        }
+        if (index === -1) {
+            index = updatedSkills.findIndex(s => s.title === title);
+        }
         const catTitle = row['Category'] || '';
         let cat = updatedCategories.find(c => c.title === catTitle) || updatedCategories[0]; // Look in updatedCategories
         
+        const valWeight = row['Weight'] !== undefined ? row['Weight'] : row['weight'];
         const skillData = {
             categoryId: cat?.id || '',
             title: title,
             description: row['Description'] || '',
+            weight: valWeight !== undefined ? (parseFloat(valWeight) || 0.20) : 0.20,
             levels: [
                 row['Level 0'] || '',
                 row['Level 1'] || '',
@@ -329,8 +321,109 @@ export default function LeadDashboard({
             updatedSkills[index] = { ...updatedSkills[index], ...skillData };
         } else {
             updatedSkills.push({
-                id: `skill-${Date.now()}-${Math.random()}`,
+                id: idVal || `skill-${Date.now()}-${Math.random()}`,
                 ...skillData
+            });
+        }
+    });
+
+    // 3. Apply Profiles
+    let updatedProfiles = [...profiles];
+    pendingImportProfilesRows.forEach((row: any) => {
+        const title = row['Title'] || '';
+        const idVal = row['ID'] || row['id'] || '';
+        let index = -1;
+        if (idVal) {
+            index = updatedProfiles.findIndex(p => p.id === idVal);
+        }
+        if (index === -1) {
+            index = updatedProfiles.findIndex(p => p.title === title);
+        }
+        
+        let checkedRequirements: any[] = [];
+        const reqKey = Object.keys(row).find(k => {
+            const kl = k.toLowerCase();
+            return kl === 'requirements' || kl === 'requirements json' || kl === 'requirements list' || kl === 'требования';
+        });
+        const rawReqsStr = reqKey ? row[reqKey] : '';
+        if (rawReqsStr) {
+            try {
+                let parsedJson: any = null;
+                if (typeof rawReqsStr === 'string') {
+                    let cleaned = rawReqsStr.trim();
+                    
+                    // Remove enclosing quotes if Excel added them (often happens on CSV/XLSX text fields)
+                    if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+                        cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+                    }
+                    
+                    // Replace escaped double quotes \" with "
+                    cleaned = cleaned.replace(/\\"/g, '"');
+                    // Replace double-double quotes "" with "
+                    cleaned = cleaned.replace(/""/g, '"');
+                    
+                    // Handle single quotes if no double quotes are present
+                    if (cleaned.includes("'") && !cleaned.includes('"')) {
+                        cleaned = cleaned.replace(/'/g, '"');
+                    }
+                    
+                    try {
+                        parsedJson = JSON.parse(cleaned);
+                    } catch (err) {
+                        // Fallback to evaluating as JS if standard JSON parse fails
+                        try {
+                            parsedJson = (new Function(`return ${cleaned}`))();
+                        } catch (err2) {
+                            console.error('Failed to parse clean rawReqsStr:', cleaned, err2);
+                        }
+                    }
+                } else {
+                    parsedJson = rawReqsStr;
+                }
+                
+                if (Array.isArray(parsedJson)) {
+                    checkedRequirements = parsedJson.map((req: any) => {
+                        if (!req || typeof req !== 'object') return null;
+                        
+                        const sIdKey = Object.keys(req).find(k => {
+                            const kl = k.toLowerCase();
+                            return kl === 'skillid' || kl === 'skill_id' || kl === 'id' || kl === 'навык' || kl === 'id навыка';
+                        });
+                        const sId = sIdKey ? req[sIdKey] : '';
+                        
+                        const tLevelKey = Object.keys(req).find(k => {
+                            const kl = k.toLowerCase();
+                            return kl === 'targetlevel' || kl === 'target_level' || kl === 'level' || kl === 'уровень' || kl === 'целевой уровень';
+                        });
+                        const tLevelRaw = tLevelKey ? req[tLevelKey] : undefined;
+                        let tLevel = 0;
+                        if (tLevelRaw !== undefined && tLevelRaw !== null) {
+                            tLevel = typeof tLevelRaw === 'number' ? tLevelRaw : (parseInt(tLevelRaw, 10) || 0);
+                        }
+                        return {
+                            skillId: sId || '',
+                            targetLevel: tLevel
+                        };
+                    }).filter(Boolean);
+                }
+            } catch (err) {
+                console.error('Error parsing requirements on import', err);
+            }
+        }
+
+        const profileData = {
+            title: title,
+            description: row['Description'] || '',
+            nextProfileId: row['Next Profile ID'] || undefined,
+            requirements: checkedRequirements
+        };
+        
+        if (index > -1) {
+            updatedProfiles[index] = { ...updatedProfiles[index], ...profileData };
+        } else {
+            updatedProfiles.push({
+                id: idVal || `profile-${Date.now()}-${Math.random()}`,
+                ...profileData
             });
         }
     });
@@ -499,6 +592,7 @@ export default function LeadDashboard({
       setSkillDesc(sk.description);
       setSkillCatId(sk.categoryId);
       setSkillLevels([...sk.levels]);
+      setSkillWeight(sk.weight ?? 0.20);
     } else {
       setEditingSkill({
         id: '',
@@ -511,7 +605,8 @@ export default function LeadDashboard({
           'Уровень 2 (Middle): Самостоятельно решает стандартные практические задачи.',
           'Уровень 3 (Senior): Решает нестандартные задачи, консультирует и обучает других.',
           'Уровень 4 (Expert): Трансформирует методы, задает отраслевые стандарты.'
-        ]
+        ],
+        weight: 0.20
       });
       setSkillTitle('');
       setSkillDesc('');
@@ -523,6 +618,7 @@ export default function LeadDashboard({
         'Уровень 3 (Senior): Решает нестандартные задачи, консультирует и обучает других.',
         'Уровень 4 (Expert): Трансформирует методы, задает отраслевые стандарты.'
       ]);
+      setSkillWeight(0.20);
     }
   };
 
@@ -537,7 +633,8 @@ export default function LeadDashboard({
         title: skillTitle,
         description: skillDesc,
         categoryId: skillCatId,
-        levels: skillLevels
+        levels: skillLevels,
+        weight: skillWeight
       } : s);
     } else {
       const newSkill: Skill = {
@@ -545,7 +642,8 @@ export default function LeadDashboard({
         categoryId: skillCatId,
         title: skillTitle,
         description: skillDesc,
-        levels: skillLevels
+        levels: skillLevels,
+        weight: skillWeight
       };
       updatedSkills = [...skills, newSkill];
     }
@@ -564,6 +662,87 @@ export default function LeadDashboard({
     });
   };
 
+  const distributeWeightsEvenly = (catId: string) => {
+    const catSkills = skills.filter(s => s.categoryId === catId);
+    if (catSkills.length === 0) return;
+    
+    const N = catSkills.length;
+    const baseWeight = Math.floor((1.0 / N) * 100) / 100;
+    const remainder = Math.round((1.0 - (baseWeight * N)) * 100) / 100;
+    
+    const updatedSkills = skills.map(s => {
+      if (s.categoryId === catId) {
+        const subIndex = catSkills.findIndex(cs => cs.id === s.id);
+        const weight = subIndex === 0 ? (baseWeight + remainder) : baseWeight;
+        return { ...s, weight: Math.round(weight * 100) / 100 };
+      }
+      return s;
+    });
+
+    onStateChange({
+      ...appState,
+      skills: updatedSkills
+    });
+  };
+
+  const scaleWeightsProportionally = (catId: string) => {
+    const catSkills = skills.filter(s => s.categoryId === catId);
+    if (catSkills.length === 0) return;
+
+    const sum = catSkills.reduce((acc, s) => acc + (s.weight ?? 0), 0);
+    if (sum === 0) {
+      distributeWeightsEvenly(catId);
+      return;
+    }
+
+    let scaledSkills = catSkills.map(s => ({
+      ...s,
+      weight: Math.round(((s.weight ?? 0) / sum) * 100) / 100
+    }));
+
+    const newSum = scaledSkills.reduce((acc, s) => acc + s.weight, 0);
+    const diff = Math.round((1.0 - newSum) * 100) / 100;
+    
+    if (diff !== 0 && scaledSkills.length > 0) {
+      let maxIdx = 0;
+      let maxVal = -1;
+      scaledSkills.forEach((s, idx) => {
+        if (s.weight > maxVal) {
+          maxVal = s.weight;
+          maxIdx = idx;
+        }
+      });
+      scaledSkills[maxIdx].weight = Math.round((scaledSkills[maxIdx].weight + diff) * 100) / 100;
+    }
+
+    const updatedSkills = skills.map(s => {
+      if (s.categoryId === catId) {
+        const matching = scaledSkills.find(cs => cs.id === s.id);
+        return matching ? matching : s;
+      }
+      return s;
+    });
+
+    onStateChange({
+      ...appState,
+      skills: updatedSkills
+    });
+  };
+
+  const updateSkillWeightDirectly = (skillId: string, newWeight: number) => {
+    const updatedSkills = skills.map(s => {
+      if (s.id === skillId) {
+        return { ...s, weight: Math.max(0, Math.min(1.0, Math.round(newWeight * 100) / 100)) };
+      }
+      return s;
+    });
+
+    onStateChange({
+      ...appState,
+      skills: updatedSkills
+    });
+  };
+
   // Profile Grade Editor
   const startEditProfile = (profileItem: Profile | null) => {
     if (profileItem) {
@@ -573,11 +752,10 @@ export default function LeadDashboard({
       setProfNextId(profileItem.nextProfileId || '');
       setProfRequirements([...profileItem.requirements]);
     } else {
-      // Setup blank requirements (all skills with target level 1, weight 0.0)
+      // Setup blank requirements (all skills with target level 1)
       const initialReqs = skills.map(s => ({
         skillId: s.id,
-        targetLevel: 1,
-        weight: 0.1
+        targetLevel: 1
       }));
       setEditingProfile({
         id: '',
@@ -592,16 +770,16 @@ export default function LeadDashboard({
     }
   };
 
-  const handleRequirementChange = (skillId: string, field: 'targetLevel' | 'weight', value: number) => {
+  const handleRequirementChange = (skillId: string, field: 'targetLevel', value: number) => {
     setProfRequirements(prev => {
       // Check if skillId already exists in requirements
       const exists = prev.some(r => r.skillId === skillId);
       if (!exists) {
-        return [...prev, { skillId, targetLevel: field === 'targetLevel' ? value : 1, weight: field === 'weight' ? value : 0 }];
+        return [...prev, { skillId, targetLevel: value }];
       }
       return prev.map(r => r.skillId === skillId ? {
         ...r,
-        [field]: value
+        targetLevel: value
       } : r);
     });
   };
@@ -609,30 +787,6 @@ export default function LeadDashboard({
   const validateAndSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!profTitle.trim()) return;
-
-    // Automatic weight verification for each active category in requirements!
-    // Sum of weights inside each category MUST be strictly equal to 1.0 (100%).
-    // Note: We only analyze categories.
-    const errors: string[] = [];
-
-    categories.forEach(cat => {
-      const catSkills = skills.filter(s => s.categoryId === cat.id);
-      const catSkillIds = new Set(catSkills.map(s => s.id));
-      const activeReqs = profRequirements.filter(r => catSkillIds.has(r.skillId));
-
-      if (activeReqs.length > 0) {
-        const sum = activeReqs.reduce((acc, r) => acc + r.weight, 0);
-        // Compare with tolerance for floating points
-        if (Math.abs(sum - 1.0) > 0.001) {
-          errors.push(`В категории "${cat.title}" сумма весов навыков равна ${(sum).toFixed(2)}, а должна быть строго равна 1.0 (100%). Скорректируйте коэффициенты.`);
-        }
-      }
-    });
-
-    if (errors.length > 0) {
-      alert(`Ошибка валидации профиля:\n${errors.join('\n')}`);
-      return;
-    }
 
     let updatedProfiles;
     if (editingProfile && editingProfile.id) {
@@ -679,9 +833,9 @@ export default function LeadDashboard({
       {/* Import Confirmation Modal */}
       {isImportModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
-            <h3 className="text-lg font-extrabold text-slate-900">Подтвердите импорт профилей</h3>
-            <div className="text-sm text-slate-600 space-y-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 flex flex-col max-h-[85vh]">
+            <h3 className="text-lg font-extrabold text-slate-900 mb-4">Подтвердите импорт профилей</h3>
+            <div className="text-sm text-slate-600 space-y-4 overflow-y-auto flex-1 pr-1 pb-4">
               <p>Будут внесены следующие изменения:</p>
               
               {(importDiff.profile.new.length > 0 || importDiff.profile.updated.length > 0) && (
@@ -935,7 +1089,7 @@ export default function LeadDashboard({
               return {
                 skill,
                 targetLevel: req?.targetLevel ?? null,
-                weight: req?.weight ?? null,
+                weight: skill.weight ?? null,
                 isPartofRequired: !!req
               };
             })
@@ -944,7 +1098,7 @@ export default function LeadDashboard({
               return {
                 skill,
                 targetLevel: req.targetLevel,
-                weight: req.weight,
+                weight: skill ? (skill.weight ?? null) : null,
                 isPartofRequired: true
               };
             }).filter(item => !!item.skill);
@@ -1005,7 +1159,7 @@ export default function LeadDashboard({
                         </div>
                         {isPartofRequired ? (
                           <span className="text-[10px] bg-indigo-50 border border-indigo-100 font-bold px-2.5 py-0.5 rounded text-indigo-805 shrink-0">
-                            🎯 Требуемый уровень профиля {prof.title}: {targetLevel} (Вес: {weight})
+                            🎯 Требуемый уровень профиля {prof.title}: {targetLevel} (Вес навыка: {(skill.weight ?? 0.20).toFixed(2)})
                           </span>
                         ) : (
                           <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-505 font-medium px-2.5 py-0.5 rounded shrink-0">
@@ -1261,7 +1415,7 @@ export default function LeadDashboard({
                 Профили
               </h1>
               <p className="text-slate-500 mt-2 text-sm max-w-2xl">
-                Профили должностей дизайнеров. Настраивайте целевые уровни владения навыками и распределяйте весовые коэффициенты.
+                Профили должностей дизайнеров. Настраивайте целевые уровни владения навыками.
               </p>
             </div>
             <button
@@ -1280,7 +1434,7 @@ export default function LeadDashboard({
                 <h3 className="text-lg font-bold text-slate-900">Сравнение профилей</h3>
                 <p className="text-xs text-slate-500 mt-1">Сравнительный анализ целевых уровней компетенций по всем направлениям</p>
               </div>
-              <div className="h-[400px] w-full">
+              <div className="h-[400px] w-full" key={activeTab}>
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="80%" data={categories.map(cat => {
                     const row: any = { subject: cat.title };
@@ -1288,10 +1442,18 @@ export default function LeadDashboard({
                       const catSkills = skills.filter(s => s.categoryId === cat.id);
                       const catReqs = p.requirements.filter(r => catSkills.some(s => s.id === r.skillId));
                       if (catReqs.length > 0) {
-                        const avg = catReqs.reduce((sum, r) => sum + r.targetLevel, 0) / catReqs.length;
-                        row[p.title] = Math.round(avg * 10) / 10;
+                        let weightedSum = 0;
+                        let weightTotal = 0;
+                        catReqs.forEach(r => {
+                          const skill = catSkills.find(s => s.id === r.skillId);
+                          const w = skill && skill.weight !== undefined ? skill.weight : 0.20;
+                          weightedSum += r.targetLevel * w;
+                          weightTotal += w;
+                        });
+                        const avg = weightTotal > 0 ? (weightedSum / weightTotal) : 0;
+                        row[p.id] = Math.round(avg * 10) / 10;
                       } else {
-                        row[p.title] = 0;
+                        row[p.id] = 0;
                       }
                     });
                     return row;
@@ -1319,7 +1481,7 @@ export default function LeadDashboard({
                         <Radar
                           key={p.id}
                           name={p.title}
-                          dataKey={p.title}
+                          dataKey={p.id}
                           stroke={color}
                           fill={color}
                           fillOpacity={0.1}
@@ -1437,42 +1599,9 @@ export default function LeadDashboard({
               />
             </div>
 
-            {/* WEIGHT VALIDATORS PER CATEGORY DISPLAY */}
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 space-y-4">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-500 block">Живая валидация весов по категориям:</span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {categories.map(cat => {
-                  const catSkills = skills.filter(s => s.categoryId === cat.id);
-                  const catSkillIds = new Set(catSkills.map(s => s.id));
-                  const activeReqs = profRequirements.filter(r => catSkillIds.has(r.skillId));
-                  const sum = activeReqs.reduce((acc, r) => acc + r.weight, 0);
-                  const isBalanced = Math.abs(sum - 1.0) < 0.001;
-
-                  return (
-                    <div key={cat.id} className={`p-4 rounded-lg border bg-white ${
-                      isBalanced 
-                        ? 'border-emerald-200 bg-emerald-50/10' 
-                        : 'border-red-200 bg-red-50/10 animate-pulse'
-                    }`}>
-                      <strong className="text-xs text-slate-800 block truncate">{cat.title}</strong>
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-[10px] text-slate-400">Сумма весов:</span>
-                        <strong className={`text-xs ${isBalanced ? 'text-emerald-700' : 'text-red-600 font-bold'}`}>
-                          {sum.toFixed(2)} / 1.00
-                        </strong>
-                      </div>
-                      <span className={`text-[9px] font-semibold mt-1 block uppercase tracking-wider ${isBalanced ? 'text-emerald-700' : 'text-red-600'}`}>
-                        {isBalanced ? '✔️ Сбалансировано' : '❌ Нарушен баланс (должно быть 1.0)'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Editing skills target and weight mapper list */}
+            {/* MATRIX OF TARGET LEVELS */}
             <div className="space-y-3">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-500 block">Матрица навыков: уровни и веса:</span>
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-500 block">Матрица навыков: целевые уровни:</span>
               <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
                 {categories.map(cat => {
                   const catSkills = skills.filter(s => s.categoryId === cat.id);
@@ -1485,7 +1614,7 @@ export default function LeadDashboard({
                       </span>
                       <div className="space-y-4">
                         {catSkills.map(sk => {
-                          const req = profRequirements.find(r => r.skillId === sk.id) || { skillId: sk.id, targetLevel: 0, weight: 0 };
+                          const req = profRequirements.find(r => r.skillId === sk.id) || { skillId: sk.id, targetLevel: 0 };
                           return (
                             <div key={sk.id} className="bg-white p-4 border border-slate-250/70 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                               <div className="space-y-0.5">
@@ -1506,20 +1635,6 @@ export default function LeadDashboard({
                                       <option key={n} value={n}>{n} - Level</option>
                                     ))}
                                   </select>
-                                </div>
-
-                                {/* Weight Input */}
-                                <div className="space-y-1">
-                                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Коэффициент Веса (0.01 - 1.0)</span>
-                                  <input
-                                    type="number"
-                                    min="0.0"
-                                    max="1.0"
-                                    step="0.05"
-                                    value={req.weight}
-                                    onChange={(e) => handleRequirementChange(sk.id, 'weight', parseFloat(e.target.value) || 0)}
-                                    className="w-16 p-1 border border-slate-200 bg-slate-50 rounded font-bold"
-                                  />
                                 </div>
                               </div>
                             </div>
@@ -1614,6 +1729,9 @@ export default function LeadDashboard({
             <div className="grid grid-cols-1 gap-6 pt-2">
               {categories.map(cat => {
                 const associatedSkills = skills.filter(s => s.categoryId === cat.id);
+                const sumOfWeights = associatedSkills.reduce((sum, sk) => sum + (sk.weight ?? 0), 0);
+                const isBalanced = Math.abs(sumOfWeights - 1.0) < 0.001;
+
                 return (
                   <div key={cat.id} className="relative border border-slate-200 rounded-xl p-5 bg-white shadow-sm space-y-3">
                     <div className="absolute top-4 right-4 flex gap-1">
@@ -1626,29 +1744,70 @@ export default function LeadDashboard({
                       {cat.title}
                     </h3>
                     {cat.description && <p className="text-xs text-slate-500">{cat.description}</p>}
+                    
+                    {/* Live Category Weight Validation display */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Балансировка весов:</span>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded transition-all text-[10px] font-bold font-mono ${
+                          isBalanced 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                            : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                        }`}>
+                          {sumOfWeights.toFixed(2)} / 1.00 {isBalanced ? ' (✔️ Сбалансировано)' : ' (⚠️ Требуется балансировка)'}
+                        </span>
+                      </div>
+                      
+                      {associatedSkills.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => distributeWeightsEvenly(cat.id)}
+                            className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold px-2.5 py-1 rounded cursor-pointer transition-colors shadow-2xs"
+                            title="Распределить вес поровну между всеми навыками в этой категории"
+                          >
+                            Авто-баланс
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="space-y-2 pt-1">
                       {associatedSkills.length === 0 ? (
                         <p className="text-xs text-slate-400 italic">Навыков в этой группе нет.</p>
                       ) : (
                         associatedSkills.map(sk => (
                           <div key={sk.id} className="bg-white p-3.5 border border-slate-200 rounded-lg flex items-center justify-between gap-4 shadow-2xs hover:scale-[1.002]">
-                            <div className="space-y-0.5 max-w-[190px]">
+                            <div className="space-y-0.5 max-w-[340px]">
                               <strong className="text-slate-800 text-xs font-bold block truncate">{sk.title}</strong>
-                              <p className="text-[10px] text-slate-400 truncate leading-snug">{sk.description}</p>
+                              <p className="text-[10px] text-slate-450 truncate leading-snug">{sk.description}</p>
                             </div>
-                            <div className="flex gap-1">
-                              <button
-                                onClick={() => startEditSkill(sk)}
-                                className="bg-slate-50 hover:bg-slate-150 text-slate-700 border border-slate-200 text-[10px] font-bold px-2 py-1 rounded cursor-pointer"
-                              >
-                                Изм.
-                              </button>
-                              <button
-                                onClick={() => deleteSkill(sk.id)}
-                                className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-650 border border-slate-200 p-1 rounded cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Вес:</span>
+                                <input
+                                  type="number"
+                                  min="0.0"
+                                  max="1.0"
+                                  step="0.05"
+                                  value={Math.round((sk.weight ?? 0.20) * 100) / 100}
+                                  onChange={(e) => updateSkillWeightDirectly(sk.id, parseFloat(e.target.value) || 0)}
+                                  className="w-14 text-center text-xs p-1 border border-slate-200 rounded-lg font-bold font-mono bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                                />
+                              </div>
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => startEditSkill(sk)}
+                                  className="bg-slate-50 hover:bg-slate-150 text-slate-700 border border-slate-200 text-[10px] font-bold px-2 py-1 rounded cursor-pointer"
+                                >
+                                  Изм.
+                                </button>
+                                <button
+                                  onClick={() => deleteSkill(sk.id)}
+                                  className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-650 border border-slate-200 p-1 rounded cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))
@@ -1728,7 +1887,7 @@ export default function LeadDashboard({
           </h4>
           <form onSubmit={saveSkill} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 col-span-1">
                 <label className="block text-xs font-bold text-slate-700">Название навыка</label>
                 <input
                   type="text"
@@ -1740,7 +1899,7 @@ export default function LeadDashboard({
                 />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 col-span-1">
                 <label className="block text-xs font-bold text-slate-700">Входит в категорию</label>
                 <select
                   required

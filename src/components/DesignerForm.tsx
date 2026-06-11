@@ -32,8 +32,10 @@ export default function DesignerForm({
   const [errors, setErrors] = useState<string>('');
   const [isNameStepActive, setIsNameStepActive] = useState(true);
 
-  // Skills are no longer filtered by profile requirements
-  const activeSkills = skills;
+  // Skills are filtered by profile requirements if the session is bound to a specific profile
+  const activeSkills = !session || session.profileId === 'profile-general'
+    ? skills
+    : skills.filter(s => profile && profile.requirements && profile.requirements.some(req => req.skillId === s.id));
 
   const currentSkill = activeSkills[currentSkillIndex];
   const currentCategory = currentSkill 

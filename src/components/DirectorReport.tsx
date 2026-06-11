@@ -100,7 +100,7 @@ export default function DirectorReport({
           
           if (score < req.targetLevel) {
             const gap = req.targetLevel - score;
-            collectiveDeficit += gap * req.weight;
+            collectiveDeficit += gap * (skill.weight ?? 0);
           }
           countWithRequirement++;
         }
@@ -274,7 +274,7 @@ export default function DirectorReport({
         <div className="lg:col-span-5 bg-slate-50 rounded-xl border border-slate-200 p-6 space-y-4">
           <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Целевые ориентиры покрытия по категориям</h4>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Каждой должности (профилю) заданы строгие веса атомарных навыков. Ниже представлен общий процент покрытия требований профиля всей командой в среднем по категориям.
+            Каждому прикладному навыку заданы весовые коэффициенты. Ниже представлен общий процент покрытия требований профиля всей командой в среднем по категориям.
           </p>
 
           <div className="space-y-4 pt-2">

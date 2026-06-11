@@ -36,7 +36,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'Уровень 2 (Middle): Самостоятельно собирает сложные компоненты с Variants и базовыми Variables, соблюдает гигиену отступов.',
       'Уровень 3 (Senior): Проектирует модульные системные UI-киты, внедряет интерактивные состояния, консультирует разработчиков.',
       'Уровень 4 (Expert): Трансформирует глобальную дизайн-систему компании, настраивает сборку токенов в CSS/JSON, внедряет автоматические плагины.'
-    ]
+    ],
+    weight: 0.40
   },
   {
     id: 'skill-visual-language',
@@ -49,7 +50,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'Уровень 2 (Middle): Самостоятельно развивает стилистику разделов, держит плотную и контрастную композицию без макетной грязи.',
       'Уровень 3 (Senior): Формирует гайдлайны с нуля, определяет арт-дирекшн ключевых лендингов и крупных продуктов.',
       'Уровень 4 (Expert): Задает новые индустриальные стандарты визуального качества интерфейсов, внедряет глобальные дизайн-концепции.'
-    ]
+    ],
+    weight: 0.40
   },
   {
     id: 'skill-motion-interactive',
@@ -62,7 +64,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'Уровень 2 (Middle): Строит умную анимацию Smart Animate, симулирует модальные окна, выпадающие списки и скроллы.',
       'Уровень 3 (Senior): Переносит сложные переходы в продвинутые инструменты (Protopie/AE), учитывает задержки и кривые скорости (easing).',
       'Уровень 4 (Expert): Формирует кодовую спецификацию анимаций для разработчиков, оптимизирует Lottie/Rive-форматы.'
-    ]
+    ],
+    weight: 0.20
   },
 
   // UX & Research Skills
@@ -77,7 +80,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'У2 (Middle): Описывает разветленные блок-схемы, проектирует состояния ошибок, оффлайн-режим, продумывает шаги возврата.',
       'У3 (Senior): Оптимизирует глобальные сценарии крупного продукта, находит «узкие горлышки» конверсии в аналитике и кардинально их сокращает.',
       'У4 (Expert): Пересобирает фреймворки сквозного клиентского опыта группы сервисов, устраняя организационные барьеры.'
-    ]
+    ],
+    weight: 0.45
   },
   {
     id: 'skill-user-testing',
@@ -87,10 +91,11 @@ export const INITIAL_SKILLS: Skill[] = [
     levels: [
       'У0: Проводит оценку интерфейса исключительно субъективно на основе личного мнения.',
       'У1 (Junior): Участвует в тестах в роли наблюдателя или записывает результаты опросов.',
-      'У2 (Middle): Самостоятельно пишет сценарий юзабилити-теста, тестирует 5-7 респондентов, структурирует отчет по инсайтам.',
+      'У2 (Middle): Самостоятельно пишет сценарий юзабилити-теста, тестирует 5-7 респондента, структурирует отчет по инсайтам.',
       'У3 (Senior): Организует регулярную систему качественного фидбека (коридорные тесты, регулярная лаба) со сложным сценарием.',
       'У4 (Expert): Курирует исследовательский центр команды, выстраивает процессы бенчмаркинга качества продукта в сравнении с конкурентами.'
-    ]
+    ],
+    weight: 0.35
   },
   {
     id: 'skill-quantitative-data',
@@ -103,7 +108,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'У2 (Middle): Формулирует дизайн-гипотезы в формате HADI, читает воронки, находит точки отвала в конверсиях.',
       'У3 (Senior): Строит совместные дизайн-эксперименты с аналитиками, инициирует А/Б-тестирования, координирует запуск изменений.',
       'У4 (Expert): Проектирует интерфейсы на базе прогнозных математических моделей поведения, глубоко интегрирует продуктовую аналитику в ДНК процессов дизайна.'
-    ]
+    ],
+    weight: 0.20
   },
 
   // Strategy & Teamwork
@@ -118,7 +124,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'У2 (Middle): Анализирует продуктовые метрики, увязывает дизайн-решения с конкретным этапом воронки продаж.',
       'У3 (Senior): Приоритизирует фичи бэклога на основе RICE/ICE, защищает инвестиционную окупаемость масштабных ИТ-решений перед лидами.',
       'У4 (Expert): Выступает соавтором стратегии компании, трансформирует бизнес-модель через запуск новых цифровых сервисов.'
-    ]
+    ],
+    weight: 0.40
   },
   {
     id: 'skill-presentation-arg',
@@ -131,7 +138,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'У2 (Middle): Аргументирует решения со ссылкой на паттерны UX, результаты исследований и базовые метрики.',
       'У3 (Senior): Уверенно модерирует дебаты, снимает возражения стейкхолдеров любого уровня, находит компромисс между ИТ, бизнесом и дизайном.',
       'У4 (Expert): Ключевой спикер компании, ведет переговоры на высшем уровне (C-Level), осуществляет продажу векторов развития крупного бизнеса.'
-    ]
+    ],
+    weight: 0.30
   },
   {
     id: 'skill-mentoring-processes',
@@ -144,7 +152,8 @@ export const INITIAL_SKILLS: Skill[] = [
       'У2 (Middle): Помогает джуниорам адаптироваться в Figma, проводит ревью простых макетов у разработчиков после верстки.',
       'У3 (Senior): Систематически курирует индивидуальную карту развития младших дизайнеров, оптимизирует рабочий цикл передачи макетов в ИТ.',
       'У4 (Expert): Архитектор профессионального комьюнити, формирует лучшие образовательные практики в департаменте, меняет культуру работы.'
-    ]
+    ],
+    weight: 0.30
   }
 ];
 
@@ -155,18 +164,15 @@ export const INITIAL_PROFILES: Profile[] = [
     description: 'Специалист начального уровня. Дизайнер фокусируется на технической реализации макетов по готовым дизайн-библиотекам и создании простых пользовательских сценариев под бдительным сопровождением наставника.',
     nextProfileId: 'profile-middle',
     requirements: [
-      // UI & Craft (weights sum = 1.0)
-      { skillId: 'skill-figma-components', targetLevel: 2, weight: 0.45 },
-      { skillId: 'skill-visual-language', targetLevel: 1, weight: 0.35 },
-      { skillId: 'skill-motion-interactive', targetLevel: 1, weight: 0.20 },
-      // UX & Research (weights sum = 1.0)
-      { skillId: 'skill-ux-flows', targetLevel: 1, weight: 0.50 },
-      { skillId: 'skill-user-testing', targetLevel: 1, weight: 0.30 },
-      { skillId: 'skill-quantitative-data', targetLevel: 0, weight: 0.20 },
-      // Strategy & Team (weights sum = 1.0)
-      { skillId: 'skill-business-alignment', targetLevel: 1, weight: 0.40 },
-      { skillId: 'skill-presentation-arg', targetLevel: 1, weight: 0.30 },
-      { skillId: 'skill-mentoring-processes', targetLevel: 0, weight: 0.30 }
+      { skillId: 'skill-figma-components', targetLevel: 2 },
+      { skillId: 'skill-visual-language', targetLevel: 1 },
+      { skillId: 'skill-motion-interactive', targetLevel: 1 },
+      { skillId: 'skill-ux-flows', targetLevel: 1 },
+      { skillId: 'skill-user-testing', targetLevel: 1 },
+      { skillId: 'skill-quantitative-data', targetLevel: 0 },
+      { skillId: 'skill-business-alignment', targetLevel: 1 },
+      { skillId: 'skill-presentation-arg', targetLevel: 1 },
+      { skillId: 'skill-mentoring-processes', targetLevel: 0 }
     ]
   },
   {
@@ -175,18 +181,15 @@ export const INITIAL_PROFILES: Profile[] = [
     description: 'Автономная боевая единица. Координирует проектирование целых веток ключевого продукта, проводит собственные локальные юзабилити-тесты, самостоятельно инициирует доработку компонентов в библиотеке.',
     nextProfileId: 'profile-senior',
     requirements: [
-      // UI & Craft (weights sum = 1.0)
-      { skillId: 'skill-figma-components', targetLevel: 3, weight: 0.40 },
-      { skillId: 'skill-visual-language', targetLevel: 2, weight: 0.40 },
-      { skillId: 'skill-motion-interactive', targetLevel: 2, weight: 0.20 },
-      // UX & Research (weights sum = 1.0)
-      { skillId: 'skill-ux-flows', targetLevel: 2, weight: 0.45 },
-      { skillId: 'skill-user-testing', targetLevel: 2, weight: 0.35 },
-      { skillId: 'skill-quantitative-data', targetLevel: 1, weight: 0.20 },
-      // Strategy & Team (weights sum = 1.0)
-      { skillId: 'skill-business-alignment', targetLevel: 2, weight: 0.40 },
-      { skillId: 'skill-presentation-arg', targetLevel: 2, weight: 0.30 },
-      { skillId: 'skill-mentoring-processes', targetLevel: 1, weight: 0.30 }
+      { skillId: 'skill-figma-components', targetLevel: 3 },
+      { skillId: 'skill-visual-language', targetLevel: 2 },
+      { skillId: 'skill-motion-interactive', targetLevel: 2 },
+      { skillId: 'skill-ux-flows', targetLevel: 2 },
+      { skillId: 'skill-user-testing', targetLevel: 2 },
+      { skillId: 'skill-quantitative-data', targetLevel: 1 },
+      { skillId: 'skill-business-alignment', targetLevel: 2 },
+      { skillId: 'skill-presentation-arg', targetLevel: 2 },
+      { skillId: 'skill-mentoring-processes', targetLevel: 1 }
     ]
   },
   {
@@ -194,18 +197,15 @@ export const INITIAL_PROFILES: Profile[] = [
     title: 'Senior продуктовый дизайнер',
     description: 'Опытный эксперт команды. Лидирует дизайн целого домена компании. Анализирует метрики Amplitude и выдвигает гипотезы, проектирует архитектуру дизайн-систем, менторит младших и средних дизайнеров.',
     requirements: [
-      // UI & Craft (weights sum = 1.0)
-      { skillId: 'skill-figma-components', targetLevel: 4, weight: 0.40 },
-      { skillId: 'skill-visual-language', targetLevel: 3, weight: 0.40 },
-      { skillId: 'skill-motion-interactive', targetLevel: 3, weight: 0.20 },
-      // UX & Research (weights sum = 1.0)
-      { skillId: 'skill-ux-flows', targetLevel: 3, weight: 0.40 },
-      { skillId: 'skill-user-testing', targetLevel: 3, weight: 0.35 },
-      { skillId: 'skill-quantitative-data', targetLevel: 2, weight: 0.25 },
-      // Strategy & Team (weights sum = 1.0)
-      { skillId: 'skill-business-alignment', targetLevel: 3, weight: 0.40 },
-      { skillId: 'skill-presentation-arg', targetLevel: 3, weight: 0.30 },
-      { skillId: 'skill-mentoring-processes', targetLevel: 3, weight: 0.30 }
+      { skillId: 'skill-figma-components', targetLevel: 4 },
+      { skillId: 'skill-visual-language', targetLevel: 3 },
+      { skillId: 'skill-motion-interactive', targetLevel: 3 },
+      { skillId: 'skill-ux-flows', targetLevel: 3 },
+      { skillId: 'skill-user-testing', targetLevel: 3 },
+      { skillId: 'skill-quantitative-data', targetLevel: 2 },
+      { skillId: 'skill-business-alignment', targetLevel: 3 },
+      { skillId: 'skill-presentation-arg', targetLevel: 3 },
+      { skillId: 'skill-mentoring-processes', targetLevel: 3 }
     ]
   }
 ];

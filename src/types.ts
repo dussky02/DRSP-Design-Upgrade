@@ -15,12 +15,12 @@ export interface Skill {
   title: string;
   description: string;
   levels: [string, string, string, string, string]; // Descriptions for levels 0, 1, 2, 3, 4
+  weight: number; // 0.01 - 1.00 (sum across category = 1.0)
 }
 
 export interface ProfileRequirement {
   skillId: string;
   targetLevel: number; // 0-4
-  weight: number; // 0.01 - 1.00
 }
 
 export interface Profile {
