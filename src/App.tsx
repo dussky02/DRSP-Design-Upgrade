@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Award, UserCheck, ShieldCheck, 
-  Map, Star, BookOpen, Layers, AlertCircle
+  Map, Star, BookOpen, Layers, AlertCircle, ClipboardList, CheckCircle2, Eye
 } from 'lucide-react';
 
 import { AppViewMode, AppState, SkillScores } from './types';
@@ -20,7 +20,6 @@ import {
 import { determineMostSuitableProfile } from './utils';
 
 // Subcomponents
-import SimulationHeader from './components/SimulationHeader';
 import LeadDashboard from './components/LeadDashboard';
 import DesignerForm from './components/DesignerForm';
 import DesignerProfile from './components/DesignerProfile';
@@ -67,11 +66,27 @@ export default function App() {
       const params = new URLSearchParams(search);
       const linkParam = params.get('link');
 
-      if (linkParam === 'lead') {
+      if (linkParam === 'competencies') {
+        setViewMode('lead');
+        setLeadSubTab('competencies');
+      } else if (linkParam === 'profiles') {
+        setViewMode('lead');
+        setLeadSubTab('profiles');
+      } else if (linkParam === 'sessions') {
+        setViewMode('lead');
+        setLeadSubTab('sessions');
+      } else if (linkParam === 'calibrations') {
+        setViewMode('lead');
+        setLeadSubTab('calibrations');
+      } else if (linkParam === 'report') {
+        setViewMode('director-report');
+        setLeadSubTab('analytics');
+      } else if (linkParam === 'lead') {
         setViewMode('lead');
         const tab = params.get('tab') as any;
         if (tab && ['competencies', 'profiles', 'sessions', 'calibrations', 'analytics'].includes(tab)) {
           setLeadSubTab(tab);
+          if (tab === 'analytics') setViewMode('director-report');
         } else {
           setLeadSubTab('competencies');
         }
@@ -84,7 +99,7 @@ export default function App() {
         const dId = params.get('designerId');
         if (dId) setSelectedDesignerId(dId);
       } else if (linkParam === 'director-report') {
-        setViewMode('lead');
+        setViewMode('director-report');
         setLeadSubTab('analytics');
       } else {
         setViewMode('lead');
@@ -120,11 +135,11 @@ export default function App() {
 
     // Build path parameters
     let path = '?';
-    if (targetView === 'lead') {
+    if (targetView === 'lead' || targetView === 'director-report') {
       if (targetTab === 'analytics') {
-        path += 'link=director-report';
+        path += 'link=report';
       } else {
-        path += `link=lead&tab=${targetTab}`;
+        path += `link=${targetTab}`;
       }
     } else if (targetView === 'designer') {
       path += `link=designer&sessionId=${sessionId || selectedSessionId || 'sess-summer-2026'}`;
@@ -186,15 +201,40 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans select-text selection:bg-indigo-100 selection:text-indigo-900">
       
-      {/* Simulation Header with target links toggles */}
-      <SimulationHeader
-        currentView={viewMode}
-        selectedSessionId={selectedSessionId}
-        selectedDesignerId={selectedDesignerId}
-        onViewChange={handleViewChange}
-      />
 
       {/* Main body area container */}
+      {(viewMode === 'lead' || viewMode === 'director-report') && (
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
+          <nav className="max-w-7xl mx-auto flex items-center px-4">
+            {[
+              { id: 'competencies', icon: BookOpen, label: 'Навыки' },
+              { id: 'profiles', icon: Layers, label: 'Профили' },
+              { id: 'sessions', icon: ClipboardList, label: 'Сессии' },
+              { id: 'calibrations', icon: CheckCircle2, label: 'Анкеты' },
+              { id: 'analytics', icon: Eye, label: 'Аналитика' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setLeadSubTab(tab.id as any);
+                  if (tab.id === 'analytics') setViewMode('director-report');
+                  else setViewMode('lead');
+                  window.history.pushState({}, '', tab.id === 'analytics' ? '?link=report' : `?link=${tab.id}`);
+                }}
+                className={`py-4 px-4 font-bold text-sm transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                  leadSubTab === tab.id
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </header>
+      )}
+
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-8">
         
         {/* 1. LEAD CABINET / DIRECTOR TAB INTEGRATION */}
@@ -208,10 +248,10 @@ export default function App() {
               setLeadSubTab(tab);
               if (tab === 'analytics') {
                 setViewMode('director-report');
-                window.history.pushState({}, '', '?link=director-report');
+                window.history.pushState({}, '', '?link=report');
               } else {
                 setViewMode('lead');
-                window.history.pushState({}, '', `?link=lead&tab=${tab}`);
+                window.history.pushState({}, '', `?link=${tab}`);
               }
             }}
           />

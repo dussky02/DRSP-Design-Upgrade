@@ -127,7 +127,7 @@ export default function DirectorReport({
   // Sharing copy action
   const handleShareReport = () => {
     const base = window.location.origin + window.location.pathname;
-    const shareUrl = `${base}?link=director-report`;
+    const shareUrl = `${base}?link=report`;
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -136,7 +136,7 @@ export default function DirectorReport({
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* Header with Title and Share button */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
             Аналитика
@@ -602,7 +602,7 @@ export default function DirectorReport({
                 <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
                   <h5 className="font-bold text-indigo-900 text-xs uppercase tracking-wider flex items-center gap-2">
                     <FileText className="w-4 h-4" />
-                    Индивидуальный план развития от руководителя:
+                    Индивидуальный план развития от лидера компетенции:
                   </h5>
                   {evalItem.actionPlan ? (
                     <div className="text-sm text-indigo-950 mt-3 whitespace-pre-wrap leading-relaxed bg-white/60 p-4 rounded-lg border border-indigo-100">

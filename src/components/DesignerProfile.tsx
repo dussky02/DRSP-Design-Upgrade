@@ -8,6 +8,10 @@ import {
   Award, TrendingUp, AlertCircle, Sparkles, BookOpen, Clock, 
   CheckCircle2, Compass, ArrowRight, UserCheck, Shield, HelpCircle, AlertTriangle
 } from 'lucide-react';
+import { 
+  ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, 
+  PolarRadiusAxis, Radar, Legend, Tooltip 
+} from 'recharts';
 import { Category, Skill, Profile, Evaluation, Session } from '../types';
 import { calculateCategoryCoverage, calculateOverallCoverage, calculateIDPPriorities } from '../utils';
 
@@ -38,6 +42,26 @@ export default function DesignerProfile({
   const superpowers: { skill: Skill; score: number; target: number }[] = [];
   const growthAreas: { skill: Skill; score: number; target: number; gap: number }[] = [];
 
+  // Prepare radar data (Self-Assessment vs Target)
+  const radarData = categories.map(cat => {
+    const catSkills = skills.filter(s => s.categoryId === cat.id);
+    const catReqs = profile.requirements.filter(r => catSkills.some(s => s.id === r.skillId));
+    
+    if (catReqs.length === 0) return null;
+
+    const avgTarget = catReqs.reduce((sum, r) => sum + r.targetLevel, 0) / catReqs.length;
+    const avgSelf = catReqs.reduce((sum, r) => {
+      return sum + (evaluation.selfScores[r.skillId] ?? 0);
+    }, 0) / catReqs.length;
+
+    return {
+      subject: cat.title,
+      'Цель (Профиль)': Math.round(avgTarget * 10) / 10,
+      'Факт (Самооценка)': Math.round(avgSelf * 10) / 10,
+      fullMark: 4
+    };
+  }).filter(Boolean);
+
   profile.requirements.forEach(req => {
     const skill = skills.find(s => s.id === req.skillId);
     if (skill) {
@@ -60,17 +84,6 @@ export default function DesignerProfile({
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-6xl mx-auto pt-4 pb-12">
-      {/* Target Link Isolation Alert */}
-      <div className="bg-slate-50 text-slate-600 border border-slate-200 rounded-2xl p-4 flex gap-3 text-xs">
-        <Shield className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-        <div>
-          <strong className="text-slate-905">Персональный изолированный профиль компетенций</strong>
-          <p className="mt-1 text-slate-500 font-medium leading-relaxed">
-            Этот экран отображает исключительно ваши личные результаты оценки. Поисковые строки коллег, административные контроллеры и данные других разработчиков физически изолированы в соответствии со стандартами информационной безопасности ЛК Дизайнера.
-          </p>
-        </div>
-      </div>
-
       {/* Main Banner Card */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="bg-indigo-600 text-white px-8 py-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -110,35 +123,97 @@ export default function DesignerProfile({
         <div className="p-8 space-y-8">
           
           {/* Category coverage progress */}
-          <div>
-            <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
-              Процент соответствия по направлениям навыков
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-              {categories.map(cat => {
-                const cov = calculateCategoryCoverage(cat.id, skills, profile, activeScores);
-                return (
-                  <div key={cat.id} className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-2">
-                    <span className="text-xs font-extrabold text-slate-400 uppercase tracking-widest block">{cat.title}</span>
-                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed lines-2-capped pb-2">{cat.description}</p>
-                    
-                    <div className="flex justify-between items-end pt-1">
-                      <span className="text-[10px] text-slate-400">Покрытие</span>
-                      <strong className="text-xl font-extrabold text-indigo-600">{cov}%</strong>
-                    </div>
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 items-start">
+            <div className="xl:col-span-3">
+              <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3">
+                Процент соответствия по направлениям навыков
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                {categories.map(cat => {
+                  const cov = calculateCategoryCoverage(cat.id, skills, profile, activeScores);
+                  return (
+                    <div key={cat.id} className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-2">
+                      <span className="text-xs font-extrabold text-slate-400 uppercase tracking-widest block">{cat.title}</span>
+                      <p className="text-[10px] text-slate-500 font-medium leading-relaxed lines-2-capped pb-2">{cat.description}</p>
+                      
+                      <div className="flex justify-between items-end pt-1">
+                        <span className="text-[10px] text-slate-400">Покрытие</span>
+                        <strong className="text-sm font-extrabold text-indigo-600">{cov}%</strong>
+                      </div>
 
-                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          cov >= 90 ? 'bg-emerald-500' :
-                          cov >= 70 ? 'bg-indigo-500' : 'bg-amber-500'
-                        }`} 
-                        style={{ width: `${cov}%` }} 
-                      />
+                      <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            cov >= 90 ? 'bg-emerald-500' :
+                            cov >= 70 ? 'bg-indigo-500' : 'bg-amber-500'
+                          }`} 
+                          style={{ width: `${cov}%` }} 
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Radar Chart */}
+            <div className="xl:col-span-2 bg-slate-50/50 border border-slate-200 rounded-2xl p-6 h-full flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-indigo-600" />
+                  Радар компетенций
+                </h4>
+              </div>
+              <p className="text-[10px] text-slate-500 mb-6 font-medium">
+                Сравнение профиля должности ({profile.title}) с вашей самооценкой по ключевым доменам.
+              </p>
+              
+              <div className="flex-1 min-h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                    <PolarGrid stroke="#e2e8f0" />
+                    <PolarAngleAxis 
+                      dataKey="subject" 
+                      tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
+                    />
+                    <PolarRadiusAxis 
+                      angle={30} 
+                      domain={[0, 4]} 
+                      tick={{ fill: '#94a3b8', fontSize: 8 }}
+                    />
+                    <Radar
+                      name="Цель (Профиль)"
+                      dataKey="Цель (Профиль)"
+                      stroke="#4f46e5"
+                      fill="#4f46e5"
+                      fillOpacity={0.1}
+                      strokeWidth={2}
+                    />
+                    <Radar
+                      name="Факт (Самооценка)"
+                      dataKey="Факт (Самооценка)"
+                      stroke="#10b981"
+                      fill="#10b981"
+                      fillOpacity={0.3}
+                      strokeWidth={2}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        borderRadius: '12px', 
+                        border: 'none', 
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                        fontSize: '11px',
+                        fontWeight: '700'
+                      }} 
+                    />
+                    <Legend 
+                      verticalAlign="bottom" 
+                      align="center"
+                      wrapperStyle={{ fontSize: '10px', fontWeight: '700', paddingTop: '20px' }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
@@ -214,7 +289,7 @@ export default function DesignerProfile({
             <div className="bg-amber-50/30 p-5 rounded-xl border border-amber-200/50 space-y-3">
               <h4 className="text-amber-900 font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
-                Обоснования изменений оценок от руководителя:
+                Обоснования изменений оценок от лидера компетенции:
               </h4>
               <div className="space-y-3 divide-y divide-amber-200/30">
                 {Object.entries(evaluation.calibrationJustifications).map(([skId, justification]) => {

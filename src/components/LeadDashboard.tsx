@@ -8,8 +8,13 @@ import {
   Plus, Settings, BookOpen, Layers, ClipboardList, CheckCircle2, 
   Trash2, Archive, Share2, Clipboard, Edit2, Check, AlertCircle, 
   HelpCircle, Sparkles, Send, Save, ArrowLeft, RefreshCw, X, ShieldAlert,
-  ChevronDown, MessageSquareCode, Eye
+  ChevronDown, MessageSquareCode, Eye, Upload, Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { 
+  ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, 
+  PolarRadiusAxis, Radar, Legend, Tooltip 
+} from 'recharts';
 import { AppState, Category, Skill, Profile, Session, Evaluation, SkillScores, SkillComments } from '../types';
 import DirectorReport from './DirectorReport';
 import { determineMostSuitableProfile } from '../utils';
@@ -74,6 +79,22 @@ export default function LeadDashboard({
 
   // Creating session state
   const [newSessionTitle, setNewSessionTitle] = useState('');
+  const [isSkillsDropdownOpen, setIsSkillsDropdownOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importDiff, setImportDiff] = useState<{
+      profile: { new: string[], updated: string[] },
+      skill: { new: string[], updated: string[] },
+      category: { new: string[], updated: string[] }
+  }>({
+      profile: { new: [], updated: [] },
+      skill: { new: [], updated: [] },
+      category: { new: [], updated: [] }
+  });
+  const [pendingImportProfilesRows, setPendingImportProfilesRows] = useState<any[]>([]);
+  const [pendingImportSkillsRows, setPendingImportSkillsRows] = useState<any[]>([]);
+  const [pendingImportCategoriesRows, setPendingImportCategoriesRows] = useState<any[]>([]);
+
+
 
   const getProfileForEvaluation = (e: Evaluation, session: Session | undefined, currentCalibrationScores?: SkillScores) => {
     if (!session || session.profileId === 'profile-general') {
@@ -114,7 +135,221 @@ export default function LeadDashboard({
     setNewSessionTitle('');
   };
 
-  // Convert status to Archived
+  // Export data to XLSX
+  const handleExportXLSX = () => {
+    // Competencies sheet (Categories)
+    const categoryData = categories.map(cat => {
+        return {
+            'ID': cat.id,
+            'Title': cat.title,
+            'Description': cat.description
+        };
+    });
+
+    // Competencies sheet (Skills)
+    const skillData = skills.map(skill => {
+        const cat = categories.find(c => c.id === skill.categoryId);
+        return {
+            'Category': cat?.title || '',
+            'Skill Title': skill.title,
+            'Description': skill.description,
+            'Level 0': skill.levels[0],
+            'Level 1': skill.levels[1],
+            'Level 2': skill.levels[2],
+            'Level 3': skill.levels[3],
+            'Level 4': skill.levels[4],
+        };
+    });
+    
+    // Profiles sheet
+    const profileData = profiles.map(profile => {
+        return {
+            'ID': profile.id,
+            'Title': profile.title,
+            'Description': profile.description,
+            'Next Profile ID': profile.nextProfileId || '',
+            'Requirements': JSON.stringify(profile.requirements)
+        };
+    });
+
+    const worksheetCategories = XLSX.utils.json_to_sheet(categoryData);
+    const worksheetSkills = XLSX.utils.json_to_sheet(skillData);
+    const worksheetProfiles = XLSX.utils.json_to_sheet(profileData);
+    
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheetCategories, 'Categories');
+    XLSX.utils.book_append_sheet(workbook, worksheetSkills, 'Competencies');
+    XLSX.utils.book_append_sheet(workbook, worksheetProfiles, 'Profiles');
+    
+    XLSX.writeFile(workbook, 'data.xlsx');
+  };
+
+  // Import data from XLSX (Profile import logic refactored for confirmation modal)                
+  const handleImportXLSX = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        
+        // Import Categories
+        if (workbook.Sheets['Categories']) {
+            const sheet = workbook.Sheets['Categories'];
+            const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+            
+            const newCategories: string[] = [];
+            const updatedCategories: string[] = [];
+            rows.forEach((row: any) => {
+                const title = row['Title'] || '';
+                if (categories.find(c => c.title === title)) {
+                    updatedCategories.push(title);
+                } else {
+                    newCategories.push(title);
+                }
+            });
+            setImportDiff(prev => ({ ...prev, category: { new: newCategories, updated: updatedCategories } }));
+            setPendingImportCategoriesRows(rows);
+            setIsImportModalOpen(true);
+        }
+
+        // Import Skills
+        if (workbook.Sheets['Competencies']) {
+            const sheet = workbook.Sheets['Competencies'];
+            const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+            
+            const newSkills: string[] = [];
+            const updatedSkills: string[] = [];
+            rows.forEach((row: any) => {
+                const title = row['Skill Title'] || '';
+                if (skills.find(s => s.title === title)) {
+                    updatedSkills.push(title);
+                } else {
+                    newSkills.push(title);
+                }
+            });
+            setImportDiff(prev => ({ ...prev, skill: { new: newSkills, updated: updatedSkills } }));
+            setPendingImportSkillsRows(rows);
+            setIsImportModalOpen(true);
+        }
+        
+        // Import Profiles
+        if (workbook.Sheets['Profiles']) {
+            const sheet = workbook.Sheets['Profiles'];
+            const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+            
+            // Calculate Diff
+            const newProfiles: string[] = [];
+            const updatedProfiles: string[] = [];
+            rows.forEach((row: any) => {
+                const title = row['Title'] || '';
+                if (profiles.find(p => p.title === title)) {
+                    updatedProfiles.push(title);
+                } else {
+                    newProfiles.push(title);
+                }
+            });
+            setImportDiff(prev => ({ ...prev, profile: { new: newProfiles, updated: updatedProfiles } }));
+            setPendingImportProfilesRows(rows); // Save for later
+            setIsImportModalOpen(true);
+        }
+        
+        event.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const applyImportChanges = () => {
+    // Apply Categories
+    let updatedCategories = [...categories];
+    pendingImportCategoriesRows.forEach((row: any) => {
+        const title = row['Title'] || '';
+        const index = updatedCategories.findIndex(c => c.title === title);
+        
+        const catData = {
+            title: title,
+            description: row['Description'] || ''
+        };
+        
+        if (index > -1) {
+            updatedCategories[index] = { ...updatedCategories[index], ...catData };
+        } else {
+            updatedCategories.push({
+                id: row['ID'] || `cat-${Date.now()}-${Math.random()}`,
+                ...catData
+            });
+        }
+    });
+
+    // Apply Profiles
+    let updatedProfiles = [...profiles];
+    pendingImportProfilesRows.forEach((row: any) => {
+        const title = row['Title'] || '';
+        const index = updatedProfiles.findIndex(p => p.title === title);
+        
+        const profileData = {
+            title: title,
+            description: row['Description'] || '',
+            nextProfileId: row['Next Profile ID'] || undefined,
+            requirements: row['Requirements'] ? JSON.parse(row['Requirements']) : []
+        };
+        
+        if (index > -1) {
+            updatedProfiles[index] = { ...updatedProfiles[index], ...profileData };
+        } else {
+            updatedProfiles.push({
+                id: row['ID'] || `profile-${Date.now()}-${Math.random()}`,
+                ...profileData
+            });
+        }
+    });
+
+    // Apply Skills
+    let updatedSkills = [...skills];
+    pendingImportSkillsRows.forEach((row: any) => {
+        const title = row['Skill Title'] || '';
+        const index = updatedSkills.findIndex(s => s.title === title);
+        const catTitle = row['Category'] || '';
+        let cat = updatedCategories.find(c => c.title === catTitle) || updatedCategories[0]; // Look in updatedCategories
+        
+        const skillData = {
+            categoryId: cat?.id || '',
+            title: title,
+            description: row['Description'] || '',
+            levels: [
+                row['Level 0'] || '',
+                row['Level 1'] || '',
+                row['Level 2'] || '',
+                row['Level 3'] || '',
+                row['Level 4'] || ''
+            ] as [string, string, string, string, string]
+        };
+        
+        if (index > -1) {
+            updatedSkills[index] = { ...updatedSkills[index], ...skillData };
+        } else {
+            updatedSkills.push({
+                id: `skill-${Date.now()}-${Math.random()}`,
+                ...skillData
+            });
+        }
+    });
+    
+    // Reset Diffs
+    setImportDiff({ profile: { new: [], updated: [] }, skill: { new: [], updated: [] }, category: { new: [], updated: [] } });
+    setPendingImportProfilesRows([]);
+    setPendingImportSkillsRows([]);
+    setPendingImportCategoriesRows([]);
+
+    onStateChange({
+        ...appState,
+        profiles: updatedProfiles,
+        skills: updatedSkills,
+        categories: updatedCategories
+    });
+    setIsImportModalOpen(false);
+  };
+
   const handleArchiveSession = (id: string) => {
     onStateChange({
       ...appState,
@@ -440,8 +675,91 @@ export default function LeadDashboard({
 
   return (
     <div className="space-y-6">
+      
+      {/* Import Confirmation Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            <h3 className="text-lg font-extrabold text-slate-900">Подтвердите импорт профилей</h3>
+            <div className="text-sm text-slate-600 space-y-4">
+              <p>Будут внесены следующие изменения:</p>
+              
+              {(importDiff.profile.new.length > 0 || importDiff.profile.updated.length > 0) && (
+                <div className="space-y-2">
+                    <p className="font-bold text-slate-900 border-b pb-1">Профили</p>
+                    {importDiff.profile.new.length > 0 && (
+                        <div className="bg-emerald-50 p-3 rounded-lg">
+                        <p className="font-bold text-emerald-800 text-xs">Добавится ({importDiff.profile.new.length}):</p>
+                        <ul className="text-[11px] list-disc list-inside mt-1">
+                            {importDiff.profile.new.map((n, i) => <li key={i}>{n}</li>)}
+                        </ul>
+                        </div>
+                    )}
+                    {importDiff.profile.updated.length > 0 && (
+                        <div className="bg-amber-50 p-3 rounded-lg">
+                        <p className="font-bold text-amber-800 text-xs">Обновится ({importDiff.profile.updated.length}):</p>
+                        <ul className="text-[11px] list-disc list-inside mt-1">
+                            {importDiff.profile.updated.map((u, i) => <li key={i}>{u}</li>)}
+                        </ul>
+                        </div>
+                    )}
+                </div>
+              )}
+
+              {(importDiff.skill.new.length > 0 || importDiff.skill.updated.length > 0) && (
+                <div className="space-y-2">
+                    <p className="font-bold text-slate-900 border-b pb-1">Навыки</p>
+                    {importDiff.skill.new.length > 0 && (
+                        <div className="bg-emerald-50 p-3 rounded-lg">
+                        <p className="font-bold text-emerald-800 text-xs">Добавится ({importDiff.skill.new.length}):</p>
+                        <ul className="text-[11px] list-disc list-inside mt-1">
+                            {importDiff.skill.new.map((n, i) => <li key={i}>{n}</li>)}
+                        </ul>
+                        </div>
+                    )}
+                    {importDiff.skill.updated.length > 0 && (
+                        <div className="bg-amber-50 p-3 rounded-lg">
+                        <p className="font-bold text-amber-800 text-xs">Обновится ({importDiff.skill.updated.length}):</p>
+                        <ul className="text-[11px] list-disc list-inside mt-1">
+                            {importDiff.skill.updated.map((u, i) => <li key={i}>{u}</li>)}
+                        </ul>
+                        </div>
+                    )}
+                </div>
+              )}
+
+              {(importDiff.category.new.length > 0 || importDiff.category.updated.length > 0) && (
+                <div className="space-y-2">
+                    <p className="font-bold text-slate-900 border-b pb-1">Категории</p>
+                    {importDiff.category.new.length > 0 && (
+                        <div className="bg-emerald-50 p-3 rounded-lg">
+                        <p className="font-bold text-emerald-800 text-xs">Добавится ({importDiff.category.new.length}):</p>
+                        <ul className="text-[11px] list-disc list-inside mt-1">
+                            {importDiff.category.new.map((n, i) => <li key={i}>{n}</li>)}
+                        </ul>
+                        </div>
+                    )}
+                    {importDiff.category.updated.length > 0 && (
+                        <div className="bg-amber-50 p-3 rounded-lg">
+                        <p className="font-bold text-amber-800 text-xs">Обновится ({importDiff.category.updated.length}):</p>
+                        <ul className="text-[11px] list-disc list-inside mt-1">
+                            {importDiff.category.updated.map((u, i) => <li key={i}>{u}</li>)}
+                        </ul>
+                        </div>
+                    )}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <button onClick={() => setIsImportModalOpen(false)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800">Отмена</button>
+              <button onClick={applyImportChanges} className="px-4 py-2 text-xs font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Принять изменения</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main interactive sub-tabs selector */}
-      <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-none gap-2 select-none">
+      <div className="hidden flex border-b border-slate-200 overflow-x-auto scrollbar-none gap-2 select-none">
         <button
           onClick={() => selectTab('competencies')}
           className={`pb-3 px-4 font-bold text-sm transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
@@ -511,7 +829,7 @@ export default function LeadDashboard({
       {/* 1. CALIBRATIONS tab */}
       {activeTab === 'calibrations' && !calibratingEval && (
         <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Анкеты
@@ -577,13 +895,15 @@ export default function LeadDashboard({
                         </button>
 
                         {e.status === 'calibrated' && (
-                          <button
-                            onClick={() => onViewChange('designer-profile', undefined, e.id)}
-                            className="hover:bg-slate-100 bg-white border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 rounded-lg flex items-center gap-1 pointer cursor-pointer transition-all"
+                          <a
+                            href={`?link=designer-profile&designerId=${e.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:bg-slate-100 bg-white border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 rounded-lg flex items-center gap-1 cursor-pointer transition-all no-underline"
                           >
                             <Eye className="w-3.5 h-3.5" />
                             <span>Просмотр ЛК</span>
-                          </button>
+                          </a>
                         )}
 
                         <button
@@ -645,7 +965,7 @@ export default function LeadDashboard({
 
             {/* Layout Split Panels */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden p-6 space-y-6">
-              <div className="border-b border-slate-100 pb-4">
+              <div className="pb-4">
                 <h2 className="text-xl font-extrabold text-slate-900">
                   Калибровка компетенций: {calibratingEval.designerName}
                 </h2>
@@ -706,7 +1026,7 @@ export default function LeadDashboard({
 
                         {/* RIGHT COLUMN: Calibration Controls */}
                         <div className="space-y-3">
-                          <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Калибровка руководителя:</span>
+                          <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Калибровка лидера компетенции:</span>
                           <div className="flex flex-wrap gap-1.5">
                             {[0, 1, 2, 3, 4].map(lvl => {
                               const isChecked = currentCalibratedValue === lvl;
@@ -804,13 +1124,13 @@ export default function LeadDashboard({
       {/* 2. SESSIONS tab */}
       {activeTab === 'sessions' && (
         <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Сессии
               </h1>
               <p className="text-slate-500 mt-2 text-sm max-w-2xl">
-                Запуск новых волн оценки по выбранным профилям должностей. Управляйте активными сессиями и копируйте ссылки для самооценки сотрудников.
+                Запуск новых сессий оценки. Анкеты будут обрабатываться индивидуально по итогам заполнения.
               </p>
             </div>
           </div>
@@ -904,6 +1224,16 @@ export default function LeadDashboard({
                           </button>
                         )}
 
+                        <a
+                          href={`?link=designer&sessionId=${sess.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-white hover:bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
+                          title="Открыть анкету"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </a>
+
                         <button
                           onClick={() => handleDeleteSession(sess.id)}
                           className="bg-white hover:bg-red-50 border border-slate-200 text-slate-400 hover:text-red-600 p-1.5 rounded-lg cursor-pointer"
@@ -925,7 +1255,7 @@ export default function LeadDashboard({
       {/* 3. MATRICES tab */}
       {activeTab === 'profiles' && !editingProfile && (
         <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Профили
@@ -934,17 +1264,88 @@ export default function LeadDashboard({
                 Профили должностей дизайнеров. Настраивайте целевые уровни владения навыками и распределяйте весовые коэффициенты.
               </p>
             </div>
-          </div>
-
-          <div className="flex justify-end">
             <button
               onClick={() => startEditProfile(null)}
-              className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs p-2.5 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-650/15"
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2.5 rounded-lg shadow-sm hover:shadow transition-all text-sm cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
-              <span>Создать матрицу профиля</span>
+              <span>Добавить</span>
             </button>
           </div>
+
+          {/* Radar Chart Comparison */}
+          {profiles.length > 0 && categories.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-slate-900">Сравнение профилей</h3>
+                <p className="text-xs text-slate-500 mt-1">Сравнительный анализ целевых уровней компетенций по всем направлениям</p>
+              </div>
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart cx="50%" cy="50%" outerRadius="80%" data={categories.map(cat => {
+                    const row: any = { subject: cat.title };
+                    profiles.forEach(p => {
+                      const catSkills = skills.filter(s => s.categoryId === cat.id);
+                      const catReqs = p.requirements.filter(r => catSkills.some(s => s.id === r.skillId));
+                      if (catReqs.length > 0) {
+                        const avg = catReqs.reduce((sum, r) => sum + r.targetLevel, 0) / catReqs.length;
+                        row[p.title] = Math.round(avg * 10) / 10;
+                      } else {
+                        row[p.title] = 0;
+                      }
+                    });
+                    return row;
+                  })}>
+                    <PolarGrid stroke="#e2e8f0" />
+                    <PolarAngleAxis 
+                      dataKey="subject" 
+                      tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
+                    />
+                    <PolarRadiusAxis 
+                      angle={30} 
+                      domain={[0, 4]} 
+                      tick={{ fill: '#94a3b8', fontSize: 8 }}
+                    />
+                    {profiles.slice(0, 5).map((p, idx) => {
+                      const colors = [
+                        '#4f46e5', // Indigo
+                        '#10b981', // Emerald
+                        '#f59e0b', // Amber
+                        '#ef4444', // Red
+                        '#8b5cf6'  // Violet
+                      ];
+                      const color = colors[idx % colors.length];
+                      return (
+                        <Radar
+                          key={p.id}
+                          name={p.title}
+                          dataKey={p.title}
+                          stroke={color}
+                          fill={color}
+                          fillOpacity={0.1}
+                          strokeWidth={2}
+                        />
+                      );
+                    })}
+                    <Tooltip 
+                      contentStyle={{ 
+                        borderRadius: '12px', 
+                        border: 'none', 
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                        fontSize: '11px',
+                        fontWeight: '700'
+                      }} 
+                    />
+                    <Legend 
+                      verticalAlign="bottom" 
+                      align="center"
+                      wrapperStyle={{ fontSize: '10px', fontWeight: '700', paddingTop: '20px' }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {profiles.map(p => {
@@ -1154,7 +1555,7 @@ export default function LeadDashboard({
       {/* 4. COMPETENCIES tab */}
       {activeTab === 'competencies' && !editingCategory && !editingSkill && (
         <div className="space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Навыки
@@ -1163,80 +1564,74 @@ export default function LeadDashboard({
                 Управление базой навыков и категорий должностного развития. Настраивайте детальные описания и поведенческие индикаторы для каждого уровня владения.
               </p>
             </div>
+            <div className="flex gap-2">
+                <button
+                    onClick={handleExportXLSX}
+                    className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold hover:bg-slate-50 transition-colors"
+                >
+                    <Download className="w-4 h-4" />
+                    Экспорт
+                </button>
+                <label className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    Импорт
+                    <input type="file" accept=".xlsx" onChange={handleImportXLSX} className="hidden" />
+                </label>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsSkillsDropdownOpen(!isSkillsDropdownOpen)}
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Добавить
+                  </button>
+                  {isSkillsDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-10 p-1">
+                      <button
+                        onClick={() => { setIsSkillsDropdownOpen(false); startEditCategory(null); }}
+                        className="block w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded"
+                      >
+                        Добавить категорию навыков
+                      </button>
+                      <button
+                        onClick={() => { setIsSkillsDropdownOpen(false); startEditSkill(null); }}
+                        className="block w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded"
+                      >
+                        Добавить навык
+                      </button>
+                    </div>
+                  )}
+                </div>
+            </div>
           </div>
           
-          {/* Categories setup block */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="font-extrabold text-slate-900">Категории</h4>
-                <p className="text-xs text-slate-400 mt-1">Эти группы формируют средневзвешенный балл и соответствия должностным направлениям.</p>
-              </div>
-              <button
-                onClick={() => startEditCategory(null)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-4.5 h-4.5" />
-                <span>Добавить категорию</span>
-              </button>
-            </div>
-
-            <div className="divide-y divide-slate-150">
-              {categories.map(c => (
-                <div key={c.id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <strong className="text-slate-900 text-xs font-extrabold">{c.title}</strong>
-                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed max-w-xl">{c.description}</p>
-                  </div>
-                  <div className="flex gap-2 text-xs">
-                    <button
-                      onClick={() => startEditCategory(c)}
-                      className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg"
-                    >
-                      Изм.
-                    </button>
-                    <button
-                      onClick={() => deleteCategory(c.id)}
-                      className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-700 p-1.5 border border-slate-200 rounded-lg"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Atomic skill lists setup box */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <div>
-                <h4 className="font-extrabold text-slate-900">Навыки</h4>
-                <p className="text-xs text-slate-400 mt-1">Содержат развернутые описания каждого балла 0-4 для самооценки и калибровки.</p>
-              </div>
-              <button
-                onClick={() => startEditSkill(null)}
-                className="bg-indigo-600 hover:bg-indigo-750 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-4.5 h-4.5" />
-                <span>Добавить навык</span>
-              </button>
+
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <div className="grid grid-cols-1 gap-6 pt-2">
               {categories.map(cat => {
                 const associatedSkills = skills.filter(s => s.categoryId === cat.id);
                 return (
-                  <div key={cat.id} className="border border-slate-200 rounded-xl p-5 bg-slate-50/30 space-y-3">
-                    <span className="text-xs text-indigo-900 uppercase font-extrabold bg-indigo-50 px-2 py-1 rounded inline-block truncate max-w-[250px]">
+                  <div key={cat.id} className="relative border border-slate-200 rounded-xl p-5 bg-white shadow-sm space-y-3">
+                    <div className="absolute top-4 right-4 flex gap-1">
+                      <button onClick={() => startEditCategory(cat)} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold px-2 py-1 rounded text-[10px]">Изм.</button>
+                      <button onClick={() => deleteCategory(cat.id)} className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-700 p-1 border border-slate-200 rounded text-[10px]">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <h3 className="font-bold text-lg text-slate-900 truncate pr-16">
                       {cat.title}
-                    </span>
+                    </h3>
+                    {cat.description && <p className="text-xs text-slate-500">{cat.description}</p>}
                     <div className="space-y-2 pt-1">
                       {associatedSkills.length === 0 ? (
                         <p className="text-xs text-slate-400 italic">Навыков в этой группе нет.</p>
                       ) : (
                         associatedSkills.map(sk => (
-                          <div key={sk.id} className="bg-white p-3.5 border border-slate-250 rounded-lg flex items-center justify-between gap-4 shadow-2xs hover:scale-[1.002]">
+                          <div key={sk.id} className="bg-white p-3.5 border border-slate-200 rounded-lg flex items-center justify-between gap-4 shadow-2xs hover:scale-[1.002]">
                             <div className="space-y-0.5 max-w-[190px]">
                               <strong className="text-slate-800 text-xs font-bold block truncate">{sk.title}</strong>
                               <p className="text-[10px] text-slate-400 truncate leading-snug">{sk.description}</p>
