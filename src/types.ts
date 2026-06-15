@@ -69,4 +69,5 @@ export interface AppState {
   profiles: Profile[];
   sessions: Session[];
   evaluations: Evaluation[];
+  lastUpdated?: number;
 }

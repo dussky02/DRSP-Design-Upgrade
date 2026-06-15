@@ -50,15 +50,49 @@ export default function App() {
 
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // 2. Fetch server-side state on initialization
+  // Helper state setter to automatically stamp timestamps on every state mutation
+  const safeSetAppState = (updater: AppState | ((prev: AppState) => AppState)) => {
+    setAppState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      return {
+        ...next,
+        lastUpdated: Date.now()
+      };
+    });
+  };
+
+  // 2. Fetch server-side state on initialization with smart recovery / conflict resolution
   useEffect(() => {
     const fetchState = async () => {
       try {
         const res = await fetch('/api/state');
         if (res.ok) {
-          const data = await res.json();
-          if (data && data.categories && data.skills) {
-            setAppState(data);
+          const serverData = await res.json();
+          if (serverData && serverData.categories && serverData.skills) {
+            setAppState(localPrev => {
+              const localTime = localPrev.lastUpdated || 0;
+              const serverTime = serverData.lastUpdated || 0;
+
+              const localCount = (localPrev.sessions?.length || 0) + (localPrev.evaluations?.length || 0);
+              const serverCount = (serverData.sessions?.length || 0) + (serverData.evaluations?.length || 0);
+
+              // A. If server had 0 sessions/evaluations but user has some locally:
+              // Classic "new container deployment" wipe - RESTORE client data back onto server!
+              if (serverCount === 0 && localCount > 0) {
+                console.log('Restoring wiped server data (container redeployment detected) using client backup.');
+                return { ...localPrev, lastUpdated: Date.now() };
+              }
+
+              // B. If user has more evaluations/sessions or has a newer timestamp:
+              if (localTime > serverTime || (localCount > serverCount && serverTime === 0)) {
+                console.log('Client backup is newer or more updated. Syncing details back to server.');
+                return { ...localPrev, lastUpdated: Date.now() };
+              }
+
+              // C. Otherwise, load server data as the source of truth
+              console.log('Retrieved latest state layout from server.');
+              return serverData;
+            });
           }
         }
       } catch (error) {
@@ -191,7 +225,7 @@ export default function App() {
   const handleResetState = () => {
     if (window.confirm('Вы действительно хотите сбросить все результаты, анкеты и изменения матриц к исходным демо-данным?')) {
       localStorage.removeItem('drsp_design_upgrade_state');
-      setAppState({
+      safeSetAppState({
         categories: INITIAL_CATEGORIES,
         skills: INITIAL_SKILLS,
         profiles: INITIAL_PROFILES,
@@ -223,7 +257,7 @@ export default function App() {
 
     // Update state to include new submission
     const updatedEvaluations = [newEvaluation, ...appState.evaluations];
-    setAppState(prev => ({
+    safeSetAppState(prev => ({
       ...prev,
       evaluations: updatedEvaluations
     }));
@@ -236,7 +270,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center font-sans space-y-4">
         <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-xs font-bold text-slate-500">Загрузка данных сессии...</p>
+        <p className="text-sm font-bold text-slate-500">Загрузка данных сессии...</p>
       </div>
     );
   }
@@ -247,44 +281,77 @@ export default function App() {
 
       {/* Main body area container */}
       {(viewMode === 'lead' || viewMode === 'director-report') && (
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
-          <nav className="max-w-7xl mx-auto flex items-center px-4">
+        <>
+          {/* Top navigation for desktop/tablet style */}
+          <header className="bg-white border-b border-slate-200 sticky top-0 z-20 hidden md:block">
+            <nav className="max-w-7xl mx-auto flex items-center px-4">
+              {[
+                { id: 'competencies', icon: BookOpen, label: 'Навыки' },
+                { id: 'profiles', icon: Layers, label: 'Профили' },
+                { id: 'sessions', icon: ClipboardList, label: 'Сессии' },
+                { id: 'calibrations', icon: CheckCircle2, label: 'Анкеты' },
+                { id: 'analytics', icon: Eye, label: 'Аналитика' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setLeadSubTab(tab.id as any);
+                    if (tab.id === 'analytics') setViewMode('director-report');
+                    else setViewMode('lead');
+                    window.history.pushState({}, '', tab.id === 'analytics' ? '?link=report' : `?link=${tab.id}`);
+                  }}
+                  className={`py-4 px-4 font-bold text-sm transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                    leadSubTab === tab.id
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </header>
+
+          {/* Bottom tabbar navigation for mobile */}
+          <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 py-2 px-1 z-50 flex justify-around items-center shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
             {[
               { id: 'competencies', icon: BookOpen, label: 'Навыки' },
               { id: 'profiles', icon: Layers, label: 'Профили' },
               { id: 'sessions', icon: ClipboardList, label: 'Сессии' },
               { id: 'calibrations', icon: CheckCircle2, label: 'Анкеты' },
               { id: 'analytics', icon: Eye, label: 'Аналитика' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setLeadSubTab(tab.id as any);
-                  if (tab.id === 'analytics') setViewMode('director-report');
-                  else setViewMode('lead');
-                  window.history.pushState({}, '', tab.id === 'analytics' ? '?link=report' : `?link=${tab.id}`);
-                }}
-                className={`py-4 px-4 font-bold text-sm transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-                  leadSubTab === tab.id
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </header>
+            ].map(tab => {
+              const isActive = leadSubTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setLeadSubTab(tab.id as any);
+                    if (tab.id === 'analytics') setViewMode('director-report');
+                    else setViewMode('lead');
+                    window.history.pushState({}, '', tab.id === 'analytics' ? '?link=report' : `?link=${tab.id}`);
+                  }}
+                  className={`flex flex-col items-center justify-center flex-1 cursor-pointer transition-all ${
+                    isActive ? 'text-indigo-600 font-bold' : 'text-slate-400'
+                  }`}
+                >
+                  <tab.icon className={`w-5 h-5 mb-0.5 ${isActive ? 'scale-110 text-indigo-600' : 'text-slate-400'}`} />
+                  <span className="text-[10px] tracking-tight">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 pt-4 pb-24 md:py-8">
         
         {/* 1. LEAD CABINET / DIRECTOR TAB INTEGRATION */}
         {(viewMode === 'lead' || viewMode === 'director-report') && (
           <LeadDashboard
             appState={appState}
-            onStateChange={setAppState}
+            onStateChange={safeSetAppState}
             onViewChange={handleViewChange}
             initialTab={viewMode === 'director-report' ? 'analytics' : leadSubTab}
             onTabChange={(tab) => {
@@ -307,13 +374,13 @@ export default function App() {
           
           if (!session || !profile) {
             return (
-              <div className="max-w-md mx-auto text-center py-12 p-6 bg-white border rounded-xl shadowspace-y-4">
+              <div className="max-w-md mx-auto text-center py-12 p-6 bg-white border rounded-xl shadow space-y-4 animate-fadeIn">
                 <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
                 <h3 className="text-lg font-bold">Сессия не найдена</h3>
-                <p className="text-xs text-slate-500">Указанная сессия оценки была удалена лидером компетенции или перенесена.</p>
+                <p className="text-sm text-slate-500">Указанная сессия оценки была удалена лидером компетенции или перенесена.</p>
                 <button
                   onClick={() => handleViewChange('welcome')}
-                  className="mt-4 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-xs font-bold rounded-lg"
+                  className="mt-4 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-sm font-bold rounded-lg"
                 >
                   Вернуться на главную
                 </button>
@@ -340,10 +407,10 @@ export default function App() {
               <div className="max-w-md mx-auto text-center py-12 p-6 bg-white border rounded-xl shadow space-y-4 animate-fadeIn">
                 <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
                 <h3 className="text-lg font-bold">Профиль не заполнен</h3>
-                <p className="text-xs text-slate-500">Дизайнер с данным идентификатором еще не заполнил свою анкету.</p>
+                <p className="text-sm text-slate-500">Дизайнер с данным идентификатором еще не заполнил свою анкету.</p>
                 <button
                   onClick={() => handleViewChange('designer', 'sess-summer-2026')}
-                  className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer"
+                  className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg cursor-pointer"
                 >
                   Пройти самооценку
                 </button>

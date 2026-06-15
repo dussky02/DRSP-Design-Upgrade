@@ -136,7 +136,7 @@ export default function DirectorReport({
   return (
     <div className="space-y-8 animate-fadeIn">
       {/* Header with Title and Share button */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-0">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
             Аналитика
@@ -150,7 +150,7 @@ export default function DirectorReport({
           <button
             id="share-report-btn"
             onClick={handleShareReport}
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2.5 rounded-lg shadow-sm hover:shadow transition-all text-sm cursor-pointer"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer"
           >
             {copied ? (
               <>
@@ -171,20 +171,20 @@ export default function DirectorReport({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Widget 1: Количество дизайнеров */}
         <div id="stat-widget-count" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[110px]">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Всего дизайнеров</p>
+          <p className="text-sm font-bold text-slate-400">Всего дизайнеров</p>
           <div className="flex items-end gap-1.5 mt-2">
             <span className="text-3xl font-bold text-slate-800 leading-none">{totalDesignersCount}</span>
-            <span className="text-slate-500 text-xs font-medium pb-0.5">чел.</span>
+            <span className="text-slate-500 text-sm font-medium pb-0.5">чел.</span>
           </div>
         </div>
 
         {/* Widget 2: Процент откалиброванных анкет */}
         <div id="stat-widget-progress" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[110px]">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Калибровка анкет</p>
+          <p className="text-sm font-bold text-slate-400">Калибровка анкет</p>
           <div className="flex flex-col gap-2 mt-2">
             <div className="flex items-end justify-between">
               <span className="text-3xl font-bold text-slate-800 leading-none">{calibrationPercent}%</span>
-              <span className="text-xs font-semibold text-slate-400 pb-0.5">{calibratedCount} из {totalDesignersCount}</span>
+              <span className="text-sm font-semibold text-slate-400 pb-0.5">{calibratedCount} из {totalDesignersCount}</span>
             </div>
             <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
               <div 
@@ -197,9 +197,9 @@ export default function DirectorReport({
 
         {/* Widget 3: Сильнейшая область */}
         <div id="stat-widget-strength" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[110px]">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Сильнейшая область</p>
+          <p className="text-sm font-bold text-slate-400">Сильнейшая область</p>
           <div className="flex flex-col items-start mt-2">
-            <span className="text-[11px] font-bold text-indigo-750 bg-indigo-50 px-2 py-0.5 rounded mb-1 max-w-full truncate" title={strongestCategory ? strongestCategory.category.title : 'Недостаточно данных'}>
+            <span className="text-sm font-bold text-indigo-750 bg-indigo-50 px-2 py-0.5 rounded mb-1 max-w-full truncate" title={strongestCategory ? strongestCategory.category.title : 'Недостаточно данных'}>
               {strongestCategory ? strongestCategory.category.title : 'Недостаточно данных'}
             </span>
             <span className="text-2xl font-bold text-slate-800 leading-none">{strongestCategory ? `${strongestCategory.average}%` : '—'}</span>
@@ -208,9 +208,9 @@ export default function DirectorReport({
 
         {/* Widget 4: Дефицит команды */}
         <div id="stat-widget-deficit" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[110px]">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Главный дефицит</p>
+          <p className="text-sm font-bold text-slate-400">Главный дефицит</p>
           <div className="flex flex-col items-start mt-2">
-            <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded mb-1 max-w-full truncate" title={weakestCategory ? weakestCategory.category.title : 'Недостаточно данных'}>
+            <span className="text-sm font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded mb-1 max-w-full truncate" title={weakestCategory ? weakestCategory.category.title : 'Недостаточно данных'}>
               {weakestCategory ? weakestCategory.category.title : 'Недостаточно данных'}
             </span>
             <span className="text-2xl font-bold text-slate-800 leading-none">{weakestCategory ? `${weakestCategory.average}%` : '—'}</span>
@@ -227,7 +227,7 @@ export default function DirectorReport({
               <ClipboardList className="w-5 h-5 text-indigo-600" />
               Рейтинг дефицитов компетенций (Командная просадка)
             </h3>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               Упорядоченный список навыков с наибольшим коллективным отставанием от плановых стандартов профилей участников с учетом веса каждого навыка.
             </p>
           </div>
@@ -240,15 +240,15 @@ export default function DirectorReport({
                 const percentShortage = Math.round(def.deficit * 100);
                 return (
                   <div key={def.skill.id} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs font-medium">
+                    <div className="flex items-center justify-between text-sm font-medium">
                       <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-indigo-50 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0">
+                        <span className="w-5 h-5 rounded-full bg-indigo-50 border border-slate-200 flex items-center justify-center text-sm font-bold text-indigo-700 shrink-0">
                           {idx + 1}
                         </span>
                         <span className="text-slate-800 font-semibold">{def.skill.title}</span>
                         <span className="text-slate-400">({def.category?.title})</span>
                       </div>
-                      <span className="text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded text-[10px]">
+                      <span className="text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded text-sm">
                         Индекс дефицита: {Math.round(def.deficit * 100) / 100}
                       </span>
                     </div>
@@ -259,7 +259,7 @@ export default function DirectorReport({
                         style={{ width: `${Math.min(100, Math.max(10, percentShortage * 1.5))}%` }}
                       />
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-slate-500">
+                    <div className="flex justify-between items-center text-sm text-slate-500">
                       <span>Отставание у {def.absoluteGapsCount} сотрудников</span>
                       <span>Чем длиннее полоса, тем критичнее разрыв для бизнеса</span>
                     </div>
@@ -272,15 +272,15 @@ export default function DirectorReport({
 
         {/* Right column: Category Context Indicators or quick guidelines */}
         <div className="lg:col-span-5 bg-slate-50 rounded-xl border border-slate-200 p-6 space-y-4">
-          <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Целевые ориентиры покрытия по категориям</h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <h4 className="text-sm font-semibold text-slate-900">Целевые ориентиры покрытия по категориям</h4>
+          <p className="text-sm text-slate-400 leading-relaxed">
             Каждому прикладному навыку заданы весовые коэффициенты. Ниже представлен общий процент покрытия требований профиля всей командой в среднем по категориям.
           </p>
 
           <div className="space-y-4 pt-2">
             {categoryAverages.map(ca => (
               <div key={ca.category.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-2">
-                <div className="flex justify-between items-center text-xs">
+                <div className="flex justify-between items-center text-sm">
                   <span className="font-bold text-slate-800">{ca.category.title}</span>
                   <span className="font-bold text-indigo-600">{ca.average}%</span>
                 </div>
@@ -294,7 +294,7 @@ export default function DirectorReport({
             ))}
           </div>
 
-          <div className="bg-amber-50 rounded-lg p-3.5 border border-amber-200/60 text-xs text-amber-800 flex gap-2.5">
+          <div className="bg-amber-50 rounded-lg p-3.5 border border-amber-200/60 text-sm text-amber-800 flex gap-2.5">
             <Award className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <strong className="font-semibold block mb-0.5">Приоритеты ИПР</strong>
@@ -309,10 +309,10 @@ export default function DirectorReport({
         <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white">
           <div>
             <h3 className="font-bold text-slate-900 text-lg">Списочный состав и реестр аттестации команды</h3>
-            <p className="text-xs text-slate-400 mt-1">Оценки соответствия текущему профилю, количество выявленных суперсил и зон роста сотрудников.</p>
+            <p className="text-sm text-slate-400 mt-1">Оценки соответствия текущему профилю, количество выявленных суперсил и зон роста сотрудников.</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium border border-slate-200">
+            <span className="text-sm text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium border border-slate-200">
               Всего анкет: {activeEvaluations.length}
             </span>
           </div>
@@ -320,7 +320,7 @@ export default function DirectorReport({
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left text-slate-600 border-collapse">
-            <thead className="text-[10px] uppercase tracking-widest text-slate-400 border-b border-slate-100">
+            <thead className="text-sm text-slate-400 border-b border-slate-100">
               <tr className="border-b border-slate-100">
                 <th className="px-6 py-4 font-semibold">ФИО сотрудника</th>
                 <th className="px-6 py-4 font-semibold">Профиль</th>
@@ -364,7 +364,7 @@ export default function DirectorReport({
                   <tr key={evalItem.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-6 py-4 font-bold text-slate-900 flex flex-col">
                       <span>{evalItem.designerName}</span>
-                      <span className="text-[10px] text-slate-400 font-normal">Отправлено {evalItem.dateSubmitted}</span>
+                      <span className="text-sm text-slate-400 font-normal">Отправлено {evalItem.dateSubmitted}</span>
                     </td>
                     <td className="px-6 py-4 text-slate-700 font-medium">
                       {profile.title}
@@ -381,16 +381,16 @@ export default function DirectorReport({
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                      <span className="bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-full px-2.5 py-0.5 text-sm font-semibold">
                         {superpowersCount} 💪
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="bg-amber-50 text-amber-800 border border-amber-100 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                      <span className="bg-amber-50 text-amber-800 border border-amber-100 rounded-full px-2.5 py-0.5 text-sm font-semibold">
                         {growthAreasCount} 🎯
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-center uppercase text-[10px] tracking-wider font-bold">
+                    <td className="px-6 py-4 text-center text-sm font-bold">
                       {evalItem.status === 'calibrated' ? (
                         <span className="text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
                           ✓ Калибрована
@@ -404,7 +404,7 @@ export default function DirectorReport({
                     <td className="px-6 py-4 text-center">
                       <button
                         onClick={() => setSelectedEvaluation(evalItem)}
-                        className="inline-flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all"
+                        className="inline-flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm rounded-lg px-3 py-1.5 text-sm font-semibold cursor-pointer transition-all"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>Подробнее</span>
@@ -435,7 +435,7 @@ export default function DirectorReport({
               <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
                 <div>
                   <h4 className="text-xl font-extrabold text-slate-900">{evalItem.designerName}</h4>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-sm text-slate-400 mt-1">
                     Детальная карта оценки по профилю: <span className="font-semibold text-indigo-600">{profile.title}</span>
                   </p>
                 </div>
@@ -452,15 +452,15 @@ export default function DirectorReport({
                 {/* Hero scorecard */}
                 <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
                   <div className="space-y-1">
-                    <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider">Общий балл покрытия требований</span>
+                    <span className="text-sm text-indigo-300 font-bold">Общий балл покрытия требований</span>
                     <h2 className="text-4xl font-extrabold">{overallMatch}%</h2>
-                    <p className="text-xs text-indigo-200">
+                    <p className="text-sm text-indigo-200">
                       Статус: {evalItem.status === 'calibrated' ? 'Откалибровано лидером компетенции' : 'Ожидает калибровки'}
                     </p>
                   </div>
                   <div className="flex gap-4">
                     <div className="bg-white/10 px-4 py-2.5 rounded-lg text-center">
-                      <span className="text-xs text-slate-300 block">Статус анкеты</span>
+                      <span className="text-sm text-slate-300 block">Статус анкеты</span>
                       <strong className="text-sm block mt-1 font-bold text-emerald-300">
                         {evalItem.status === 'calibrated' ? 'УТВЕРЖДЕНО' : 'ЗАПОЛНЕНО'}
                       </strong>
@@ -471,7 +471,7 @@ export default function DirectorReport({
                           setSelectedEvaluation(null);
                           onSelectDesignerDetails(evalItem.id);
                         }}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2.5 rounded-lg shadow cursor-pointer transition-all flex items-center gap-1.5 shrink-0 hover:scale-[1.02]"
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-lg shadow cursor-pointer transition-all flex items-center gap-1.5 shrink-0 hover:scale-[1.02]"
                       >
                         <Compass className="w-3.5 h-3.5" />
                         <span>Открыть в Планшете калибровки</span>
@@ -488,9 +488,9 @@ export default function DirectorReport({
                       const cov = calculateCategoryCoverage(cat.id, skills, profile, scores);
                       return (
                         <div key={cat.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                          <span className="text-slate-800 text-xs font-extrabold block truncate">{cat.title}</span>
+                          <span className="text-slate-800 text-sm font-extrabold block truncate">{cat.title}</span>
                           <div className="flex justify-between items-end mt-2">
-                            <span className="text-slate-400 text-[10px]">Процент соответствия</span>
+                            <span className="text-slate-400 text-sm">Процент соответствия</span>
                             <span className="text-indigo-600 text-lg font-extrabold">{cov}%</span>
                           </div>
                           <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mt-1.5">
@@ -521,25 +521,25 @@ export default function DirectorReport({
                       return (
                         <div key={req.skillId} className="p-4 flex flex-col md:flex-row md:items-start justify-between gap-4 hover:bg-slate-50/50">
                           <div className="space-y-1 max-w-lg">
-                            <span className="font-bold text-slate-900 border-b border-indigo-100 pb-0.5 inline-block text-xs">
+                            <span className="font-bold text-slate-900 border-b border-indigo-100 pb-0.5 inline-block text-sm">
                               {skill.title}
                             </span>
-                            <p className="text-xs text-slate-500 mt-1 lines-2-capped">{skill.description}</p>
+                            <p className="text-sm text-slate-500 mt-1 lines-2-capped">{skill.description}</p>
                           </div>
 
-                          <div className="flex items-center gap-6 shrink-0 text-xs font-semibold">
+                          <div className="flex items-center gap-6 shrink-0 text-sm font-semibold">
                             {/* Score info badge */}
                             <div className="flex gap-4">
                               <div className="text-center">
-                                <span className="text-[10px] text-slate-400 block font-normal">Самооценка</span>
-                                <span className="text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-xs mt-1 block">
+                                <span className="text-sm text-slate-400 block font-normal">Самооценка</span>
+                                <span className="text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-sm mt-1 block">
                                   {selfVal}
                                 </span>
                               </div>
 
                               <div className="text-center">
-                                <span className="text-[10px] text-slate-400 block font-normal">Калибровка</span>
-                                <span className={`px-2 py-0.5 rounded text-xs mt-1 block ${
+                                <span className="text-sm text-slate-400 block font-normal">Калибровка</span>
+                                <span className={`px-2 py-0.5 rounded text-sm mt-1 block ${
                                   hasCalChange 
                                     ? 'bg-amber-100 text-amber-800 font-bold border border-amber-200' 
                                     : 'bg-indigo-50 text-indigo-700'
@@ -549,8 +549,8 @@ export default function DirectorReport({
                               </div>
 
                               <div className="text-center">
-                                <span className="text-[10px] text-slate-400 block font-normal">Требуется</span>
-                                <span className="text-slate-550 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded text-xs mt-1 block">
+                                <span className="text-sm text-slate-400 block font-normal">Требуется</span>
+                                <span className="text-slate-550 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded text-sm mt-1 block">
                                   {targetVal}
                                 </span>
                               </div>
@@ -559,11 +559,11 @@ export default function DirectorReport({
                             {/* Gap tag */}
                             <div>
                               {calVal >= targetVal ? (
-                                <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-[10px] uppercase font-bold border border-emerald-100 shrink-0">
+                                <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-sm font-bold border border-emerald-100 shrink-0">
                                   Выполнено
                                 </span>
                               ) : (
-                                <span className="bg-red-50 text-red-700 px-2 py-1 rounded text-[10px] uppercase font-bold border border-red-100 shrink-0">
+                                <span className="bg-red-50 text-red-700 px-2 py-1 rounded text-sm font-bold border border-red-100 shrink-0">
                                   Зазор -{targetVal - calVal}
                                 </span>
                               )}
@@ -578,7 +578,7 @@ export default function DirectorReport({
                 {/* Calibration comments logged */}
                 {Object.keys(evalItem.calibrationJustifications).length > 0 && (
                   <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200/60 space-y-2.5">
-                    <h5 className="font-extrabold text-amber-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <h5 className="font-extrabold text-amber-900 text-sm flex items-center gap-1.5">
                       <AlertTriangle className="w-4 h-4 text-amber-600" />
                       Обоснования изменений оценок лидом:
                     </h5>
@@ -586,7 +586,7 @@ export default function DirectorReport({
                       {Object.entries(evalItem.calibrationJustifications).map(([skId, justification]) => {
                         const sk = skills.find(s => s.id === skId);
                         return (
-                          <div key={skId} className="pt-2 first:pt-0 text-xs">
+                          <div key={skId} className="pt-2 first:pt-0 text-sm">
                             <span className="font-bold text-amber-900">{sk ? sk.title : 'Навык'}:</span>
                             <p className="text-amber-800 italic mt-1 bg-white p-2.5 rounded border border-amber-200/50">
                               « {justification} »
@@ -600,7 +600,7 @@ export default function DirectorReport({
 
                 {/* Approved actions plans view */}
                 <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
-                  <h5 className="font-bold text-indigo-900 text-xs uppercase tracking-wider flex items-center gap-2">
+                  <h5 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4" />
                     Индивидуальный план развития от лидера компетенции:
                   </h5>
@@ -609,7 +609,7 @@ export default function DirectorReport({
                       {evalItem.actionPlan}
                     </div>
                   ) : (
-                    <p className="text-xs text-indigo-500 italic mt-2">План действий находится на этапе разработки и согласования.</p>
+                    <p className="text-sm text-indigo-500 italic mt-2">План действий находится на этапе разработки и согласования.</p>
                   )}
                 </div>
               </div>

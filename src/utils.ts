@@ -137,9 +137,9 @@ export function determineMostSuitableProfile(
   skills: Skill[],
   profiles: Profile[],
   scores: SkillScores
-): Profile {
+): Profile | undefined {
   if (profiles.length === 0) {
-    throw new Error('No profiles available');
+    return undefined;
   }
 
   // Calculate average target level for each profile to sort them from highest to lowest demand

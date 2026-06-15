@@ -37,6 +37,19 @@ export default function DesignerForm({
     ? skills
     : skills.filter(s => profile && profile.requirements && profile.requirements.some(req => req.skillId === s.id));
 
+  if (activeSkills.length === 0) {
+    return (
+      <div className="max-w-md mx-auto text-center py-12 p-6 bg-white border border-slate-200 rounded-xl shadow space-y-4 animate-fadeIn mt-8">
+        <HelpCircle className="w-12 h-12 text-amber-500 mx-auto" />
+        <h3 className="text-lg font-bold text-slate-800">Опросы временно недоступны</h3>
+        <p className="text-sm text-slate-500 leading-relaxed">
+          В матрице компетенций пока нет созданных навыков или привязанных требований.
+          Обратитесь к лидеру компетенции, чтобы наполнить матрицу профессиональных навыков.
+        </p>
+      </div>
+    );
+  }
+
   const currentSkill = activeSkills[currentSkillIndex];
   const currentCategory = currentSkill 
     ? categories.find(c => c.id === currentSkill.categoryId) 
@@ -135,7 +148,7 @@ export default function DesignerForm({
                     }}
                     className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-all"
                   />
-                  {nameError && <p className="text-red-600 text-xs font-bold">{nameError}</p>}
+                  {nameError && <p className="text-red-600 text-sm font-bold">{nameError}</p>}
                 </div>
               </div>
 
@@ -150,7 +163,7 @@ export default function DesignerForm({
                     }
                     setIsNameStepActive(false);
                   }}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 cursor-pointer select-none transition-all"
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 cursor-pointer select-none transition-all"
                 >
                   <span>Начать</span>
                 </button>
@@ -167,7 +180,7 @@ export default function DesignerForm({
                       style={{ width: `${progressPercent}%` }}
                     />
                   </div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  <div className="flex justify-between items-center text-sm text-slate-400 font-bold">
                     <span>Заполнение анкеты</span>
                     <span>{progressPercent}% ({currentSkillIndex + 1} из {activeSkills.length})</span>
                   </div>
@@ -176,17 +189,17 @@ export default function DesignerForm({
                 {/* Target skill layout */}
                 <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-5 space-y-2">
                   <h3 className="text-lg font-bold text-slate-900 tracking-tight">{currentSkill.title}</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed font-medium">{currentSkill.description}</p>
+                  <p className="text-sm text-slate-600 leading-relaxed font-medium">{currentSkill.description}</p>
                 </div>
 
                 {/* 5 behavioral marker options (0-4) */}
                 <div className="space-y-3">
-                  <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-widest">
+                  <label className="block text-sm font-extrabold text-slate-500">
                     Выберите, что лучше всего описывает ваш опыт
                   </label>
 
                   {errors && (
-                    <p className="text-xs text-red-600 font-extrabold flex items-center gap-1.5 bg-red-50 border border-red-200 p-2.5 rounded-lg">
+                    <p className="text-sm text-red-600 font-extrabold flex items-center gap-1.5 bg-red-50 border border-red-200 p-2.5 rounded-lg">
                       <HelpCircle className="w-4 h-4 shrink-0" />
                       {errors}
                     </p>
@@ -200,13 +213,9 @@ export default function DesignerForm({
                           key={lvlIndex}
                           type="button"
                           onClick={() => handleSelectLevel(lvlIndex)}
-                          className={`w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer flex items-start gap-3.5 hover:scale-[1.005] ${
-                            isSelected
-                              ? 'bg-indigo-50/50 border-indigo-600 ring-1 ring-indigo-500 shadow-md'
-                              : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/30'
-                          }`}
+                          className="w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer flex items-start gap-3.5 hover:scale-[1.005]"
                         >
-                          <div className={`mt-0.5 w-5 h-5 rounded-full shrink-0 flex items-center justify-center font-bold text-xs ${
+                          <div className={`mt-0.5 w-5 h-5 rounded-full shrink-0 flex items-center justify-center font-bold text-sm ${
                             isSelected 
                               ? 'bg-indigo-600 text-white' 
                               : 'bg-slate-100 text-slate-500 border border-slate-200'
@@ -214,7 +223,7 @@ export default function DesignerForm({
                             {lvlIndex}
                           </div>
                           <div className="space-y-0.5 flex-1 select-none">
-                            <p className={`text-xs leading-relaxed font-medium transition-colors ${
+                            <p className={`text-sm leading-relaxed font-medium transition-colors ${
                               isSelected ? 'text-indigo-950 font-bold' : 'text-slate-600'
                             }`}>
                               {description}
@@ -231,7 +240,7 @@ export default function DesignerForm({
                   <button
                     type="button"
                     onClick={handleBack}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     <span>Назад</span>
@@ -241,7 +250,7 @@ export default function DesignerForm({
                     <button
                       type="button"
                       onClick={handleNext}
-                      className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 cursor-pointer select-none"
+                      className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 cursor-pointer select-none"
                     >
                       <span>Дальше</span>
                       <ArrowRight className="w-4 h-4" />
@@ -249,7 +258,7 @@ export default function DesignerForm({
                   ) : (
                     <button
                       type="submit"
-                      className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-6 py-3 rounded-lg cursor-pointer transform hover:scale-[1.01] active:scale-[0.99] transition-all shadow-md shadow-emerald-900/10"
+                      className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-6 py-3 rounded-lg cursor-pointer transform hover:scale-[1.01] active:scale-[0.99] transition-all shadow-md shadow-emerald-900/10"
                     >
                       <Send className="w-4 h-4" />
                       <span>Отправить результаты</span>

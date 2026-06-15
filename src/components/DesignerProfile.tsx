@@ -89,28 +89,28 @@ export default function DesignerProfile({
         <div className="bg-indigo-600 text-white px-8 py-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <h1 className="text-3xl font-black tracking-tight">{evaluation.designerName}</h1>
-            <p className="text-slate-100 text-xs font-medium">
+            <p className="text-slate-150 text-sm font-medium">
               Базовый профиль оценки: <strong className="text-white font-semibold">{profile.title}</strong> • Сессия: {session.title}
             </p>
           </div>
 
-          <div className="flex flex-col items-center justify-center bg-indigo-700/60 p-4 rounded-xl border border-indigo-505/30 shrink-0 text-center md:min-w-[170px]">
-            <span className="text-[10px] text-indigo-100 uppercase font-bold tracking-widest block">Общее соответствие</span>
+          <div className="flex flex-col items-center justify-center bg-indigo-700/60 p-4 rounded-xl border border-indigo-500/30 shrink-0 text-center md:min-w-[170px]">
+            <span className="text-sm text-indigo-100 font-bold block">Общее соответствие</span>
             <div className="text-4xl font-black mt-1 text-white">{overallMatch}%</div>
-            <span className="text-[10px] text-indigo-200 mt-1 block">по требованиям профиля</span>
+            <span className="text-sm text-indigo-200 mt-1 block">по требованиям профиля</span>
           </div>
         </div>
 
         {/* Status band */}
-        <div className="px-8 py-3.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 bg-slate-50 text-xs font-semibold">
+        <div className="px-8 py-3.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 bg-slate-50 text-sm font-semibold">
           <div className="flex items-center gap-2">
             {isCalibrated ? (
-              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-[11px]">
+              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-sm">
                 <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
                 Оценки утверждены и откалиброваны лидом
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-[11px]">
+              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-sm">
                 <Clock className="w-3.5 h-3.5 text-amber-600" />
                 Ожидает калибровки • Показана ваша самооценка
               </span>
@@ -133,11 +133,11 @@ export default function DesignerProfile({
                   const cov = calculateCategoryCoverage(cat.id, skills, profile, activeScores);
                   return (
                     <div key={cat.id} className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-2">
-                      <span className="text-xs font-extrabold text-slate-400 uppercase tracking-widest block">{cat.title}</span>
-                      <p className="text-[10px] text-slate-500 font-medium leading-relaxed lines-2-capped pb-2">{cat.description}</p>
+                      <span className="text-sm font-extrabold text-slate-400 block">{cat.title}</span>
+                      <p className="text-sm text-slate-500 font-medium leading-relaxed lines-2-capped pb-2">{cat.description}</p>
                       
                       <div className="flex justify-between items-end pt-1">
-                        <span className="text-[10px] text-slate-400">Покрытие</span>
+                        <span className="text-sm text-slate-400">Покрытие</span>
                         <strong className="text-sm font-extrabold text-indigo-600">{cov}%</strong>
                       </div>
 
@@ -159,12 +159,12 @@ export default function DesignerProfile({
             {/* Radar Chart */}
             <div className="xl:col-span-2 bg-slate-50/50 border border-slate-200 rounded-2xl p-6 h-full flex flex-col">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-indigo-600" />
                   Радар компетенций
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 mb-6 font-medium">
+              <p className="text-sm text-slate-500 mb-6 font-medium">
                 Сравнение профиля должности ({profile.title}) с вашей самооценкой по ключевым доменам.
               </p>
               
@@ -174,12 +174,12 @@ export default function DesignerProfile({
                     <PolarGrid stroke="#e2e8f0" />
                     <PolarAngleAxis 
                       dataKey="subject" 
-                      tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
+                      tick={{ fill: '#64748b', fontSize: 14, fontWeight: 700 }}
                     />
                     <PolarRadiusAxis 
                       angle={30} 
                       domain={[0, 4]} 
-                      tick={{ fill: '#94a3b8', fontSize: 8 }}
+                      tick={{ fill: '#94a3b8', fontSize: 14 }}
                     />
                     <Radar
                       name="Цель (Профиль)"
@@ -202,14 +202,14 @@ export default function DesignerProfile({
                         borderRadius: '12px', 
                         border: 'none', 
                         boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                        fontSize: '11px',
+                        fontSize: '14px',
                         fontWeight: '700'
                       }} 
                     />
                     <Legend 
                       verticalAlign="bottom" 
                       align="center"
-                      wrapperStyle={{ fontSize: '10px', fontWeight: '700', paddingTop: '20px' }}
+                      wrapperStyle={{ fontSize: '14px', fontWeight: '700', paddingTop: '20px' }}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
@@ -225,25 +225,25 @@ export default function DesignerProfile({
                 <Sparkles className="w-5 h-5 text-emerald-600" />
                 Мои суперсилы ({superpowers.length})
               </h4>
-              <p className="text-xs text-emerald-800/80 leading-relaxed">
+              <p className="text-sm text-emerald-800/80 leading-relaxed">
                 Навыки, в которых ваш уровень полностью соответствует требованиям профиля или превышает их. Используйте эти сильные стороны для развития команды:
               </p>
 
               <div className="space-y-2.5 pt-1">
                 {superpowers.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">Навыки соответствия не выявлены.</p>
+                  <p className="text-sm text-slate-500 italic">Навыки соответствия не выявлены.</p>
                 ) : (
                   superpowers.map(item => (
-                    <div key={item.skill.id} className="bg-white border border-emerald-100/70 p-3 rounded-lg flex justify-between items-center text-xs">
+                    <div key={item.skill.id} className="bg-white border border-emerald-100/70 p-3 rounded-lg flex justify-between items-center text-sm">
                       <div className="space-y-0.5">
                         <span className="font-bold text-slate-900">{item.skill.title}</span>
-                        <p className="text-[10px] text-slate-500 truncate max-w-[200px]">{item.skill.description}</p>
+                        <p className="text-sm text-slate-500 truncate max-w-[200px]">{item.skill.description}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-100">
+                        <span className="text-sm font-semibold bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-100">
                           Итог: {item.score}
                         </span>
-                        <span className="text-[10px] text-slate-400">План: {item.target}</span>
+                        <span className="text-sm text-slate-400">План: {item.target}</span>
                       </div>
                     </div>
                   ))
@@ -257,25 +257,25 @@ export default function DesignerProfile({
                 <Award className="w-5 h-5 text-amber-600" />
                 Зоны роста ({growthAreas.length})
               </h4>
-              <p className="text-xs text-amber-800 shadow-none">
+              <p className="text-sm text-amber-800 shadow-none">
                 Навыки, где ваши текущие результаты отстают от планового ориентира профиля. Это приоритетные точки внимания для текущего квартала:
               </p>
 
               <div className="space-y-2.5 pt-1">
                 {growthAreas.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">Вы на 100% соответствуете всем требованиям профиля!</p>
+                  <p className="text-sm text-slate-500 italic">Вы на 100% соответствуете всем требованиям профиля!</p>
                 ) : (
                   growthAreas.map(item => (
-                    <div key={item.skill.id} className="bg-white border border-amber-100 p-3 rounded-lg flex justify-between items-center text-xs">
+                    <div key={item.skill.id} className="bg-white border border-amber-100 p-3 rounded-lg flex justify-between items-center text-sm">
                       <div className="space-y-0.5">
                         <span className="font-bold text-slate-900">{item.skill.title}</span>
-                        <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{item.skill.description}</p>
+                        <p className="text-sm text-slate-400 truncate max-w-[200px]">{item.skill.description}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] font-semibold bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-100">
+                        <span className="text-sm font-semibold bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-100">
                           Зазор -{item.gap}
                         </span>
-                        <span className="text-[10px] text-slate-400">Факт: {item.score} / План: {item.target}</span>
+                        <span className="text-sm text-slate-400">Факт: {item.score} / План: {item.target}</span>
                       </div>
                     </div>
                   ))
@@ -287,7 +287,7 @@ export default function DesignerProfile({
           {/* Calibrator comment logs */}
           {isCalibrated && Object.keys(evaluation.calibrationJustifications).length > 0 && (
             <div className="bg-amber-50/30 p-5 rounded-xl border border-amber-200/50 space-y-3">
-              <h4 className="text-amber-900 font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <h4 className="text-amber-900 font-extrabold text-sm flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
                 Обоснования изменений оценок от лидера компетенции:
               </h4>
@@ -295,7 +295,7 @@ export default function DesignerProfile({
                 {Object.entries(evaluation.calibrationJustifications).map(([skId, justification]) => {
                   const sk = skills.find(s => s.id === skId);
                   return (
-                    <div key={skId} className="pt-3 first:pt-0 text-xs">
+                    <div key={skId} className="pt-3 first:pt-0 text-sm">
                       <span className="font-bold text-amber-950 font-semibold">{sk ? sk.title : 'Навык'}</span>
                       <p className="text-slate-700 mt-1 italic pl-2.5 border-l-2 border-amber-400">
                         « {justification} »
@@ -309,7 +309,7 @@ export default function DesignerProfile({
 
           {/* Action Plan by Lead */}
           <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-2xl space-y-3">
-            <h3 className="font-extrabold text-indigo-900 text-sm uppercase tracking-wider flex items-center gap-2">
+            <h3 className="font-extrabold text-indigo-900 text-sm flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-indigo-600" />
               Индивидуальный план развития (ИПР) от лидера компетенции
             </h3>
@@ -318,7 +318,7 @@ export default function DesignerProfile({
                 {evaluation.actionPlan}
               </div>
             ) : (
-              <p className="text-xs text-indigo-600 font-medium bg-white/40 p-4 rounded-xl border border-indigo-100/50 italic">
+              <p className="text-sm text-indigo-600 font-medium bg-white/40 p-4 rounded-xl border border-indigo-100/50 italic">
                 {isCalibrated 
                   ? 'Лидер компетенции утвердил калибровку оценок, но поле текстовых рекомендаций оставлено пустым.'
                   : 'План развития и рекомендации станут доступны на этой вкладке сразу после того, как Дизайн-лид утвердит калибровку ваших баллов.'
@@ -333,23 +333,23 @@ export default function DesignerProfile({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
                 <div>
                   <h4 className="font-bold text-slate-900">Развитие до следующего профиля</h4>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-sm text-slate-500 mt-1">
                     Ориентир ступени развития: <strong className="text-indigo-600">{nextProfile.title}</strong>
                   </p>
                 </div>
-                <div className="inline-flex items-center gap-1.5 text-xs text-slate-700 bg-white border border-slate-200 px-3 py-1 rounded-full font-bold">
+                <div className="inline-flex items-center gap-1.5 text-sm text-slate-700 bg-white border border-slate-200 px-3 py-1 rounded-full font-bold">
                   <span>Шаг карьеры</span>
                   <ArrowRight className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
                 </div>
               </div>
 
-              <p className="text-xs text-slate-600 leading-relaxed">
+              <p className="text-sm text-slate-600 leading-relaxed">
                 Автоматически сформированный список навыков с наивысшим <strong>Индексом Приоритета</strong> для получения следующего профиля. Навыки отсортированы на основе величины отставания, умноженной на его весовой коэффициент. Опережайте ожидания бизнеса, прокачивая топ-позиции первыми:
               </p>
 
               <div className="space-y-3 pt-2">
                 {idpItems.length === 0 ? (
-                  <p className="text-xs text-emerald-800 bg-emerald-50 p-4 rounded-xl font-medium border border-emerald-100">
+                  <p className="text-sm text-emerald-800 bg-emerald-50 p-4 rounded-xl font-medium border border-emerald-100">
                     🎉 Поздравляем! Ваши текущие оценки уже превосходят целевые показатели следующего профиля «{nextProfile.title}»! Вы готовы к промоушену!
                   </p>
                 ) : (
@@ -357,29 +357,29 @@ export default function DesignerProfile({
                     <div key={idp.skill.id} className="bg-white p-4 rounded-xl border border-slate-200 gap-3 flex flex-col sm:flex-row sm:items-center justify-between">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
+                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-sm font-extrabold ${
                             idx === 0 ? 'bg-red-100 text-red-700' :
                             idx === 1 ? 'bg-amber-100 text-amber-700' :
                             'bg-indigo-50 text-indigo-700'
                           }`}>
                             #{idx + 1}
                           </span>
-                          <span className="font-bold text-slate-900 text-xs">{idp.skill.title}</span>
-                          <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                          <span className="font-bold text-slate-900 text-sm">{idp.skill.title}</span>
+                          <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-sm font-bold">
                             Приоритет: {idp.priorityIndex}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-500 leading-normal">{idp.skill.description}</p>
+                        <p className="text-sm text-slate-500 leading-normal">{idp.skill.description}</p>
                       </div>
 
-                      <div className="flex items-center gap-4 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 text-xs">
+                      <div className="flex items-center gap-4 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 text-sm">
                         <div className="text-slate-400">
                           Текущий балл: <strong className="text-slate-700 font-bold">{idp.currentScore}</strong>
                         </div>
                         <div className="text-indigo-600">
                           Целевой балл: <strong className="font-extrabold">{idp.targetLevel}</strong>
                         </div>
-                        <div className="text-slate-400 text-[11px]">
+                        <div className="text-slate-400 text-sm">
                           Вес навыка: <span className="font-semibold text-slate-800">{idp.weight}</span>
                         </div>
                       </div>

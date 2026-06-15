@@ -8,7 +8,7 @@ import {
   Plus, Settings, BookOpen, Layers, ClipboardList, CheckCircle2, 
   Trash2, Archive, Share2, Clipboard, Edit2, Check, AlertCircle, 
   HelpCircle, Sparkles, Send, Save, ArrowLeft, RefreshCw, X, ShieldAlert,
-  ChevronDown, MessageSquareCode, Eye, Upload, Download
+  ChevronDown, ChevronUp, ArrowUp, ArrowDown, MessageSquareCode, Eye, Upload, Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -21,7 +21,7 @@ import { determineMostSuitableProfile } from '../utils';
 
 interface LeadDashboardProps {
   appState: AppState;
-  onStateChange: (updatedState: AppState) => void;
+  onStateChange: (updatedState: AppState | ((prev: AppState) => AppState)) => void;
   onViewChange: (view: any, sessionId?: string, designerId?: string, tab?: 'competencies' | 'profiles' | 'sessions' | 'calibrations' | 'analytics') => void;
   initialTab?: 'competencies' | 'profiles' | 'sessions' | 'calibrations' | 'analytics';
   onTabChange?: (tab: 'competencies' | 'profiles' | 'sessions' | 'calibrations' | 'analytics') => void;
@@ -35,6 +35,34 @@ export default function LeadDashboard({
   onTabChange
 }: LeadDashboardProps) {
   const { categories, skills, profiles, sessions, evaluations } = appState;
+
+  // Sort profiles by career step progression
+  const sortedProfiles = React.useMemo(() => {
+    if (profiles.length <= 1) return profiles;
+    const pointedTo = new Set(profiles.map(p => p.nextProfileId).filter(Boolean));
+    const roots = profiles.filter(p => !pointedTo.has(p.id));
+    const sequence: Profile[] = [];
+    const visited = new Set<string>();
+
+    const traverse = (p: Profile) => {
+      if (visited.has(p.id)) return;
+      visited.add(p.id);
+      sequence.push(p);
+      if (p.nextProfileId) {
+        const next = profiles.find(x => x.id === p.nextProfileId);
+        if (next) traverse(next);
+      }
+    };
+
+    roots.forEach(traverse);
+    profiles.forEach(p => {
+      if (!visited.has(p.id)) {
+        traverse(p);
+      }
+    });
+
+    return sequence;
+  }, [profiles]);
 
   // Active sub-navigation tabs inside Lead Panel
   // 'competencies' | 'profiles' | 'sessions' | 'calibrations' | 'analytics'
@@ -60,12 +88,14 @@ export default function LeadDashboard({
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [catTitle, setCatTitle] = useState('');
   const [catDesc, setCatDesc] = useState('');
+  const [confirmDeleteCat, setConfirmDeleteCat] = useState(false);
 
   // Editing Skill state
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [skillTitle, setSkillTitle] = useState('');
   const [skillDesc, setSkillDesc] = useState('');
   const [skillCatId, setSkillCatId] = useState('');
+  const [confirmDeleteSkill, setConfirmDeleteSkill] = useState(false);
   const [skillWeight, setSkillWeight] = useState<number>(0.20);
   const [skillLevels, setSkillLevels] = useState<[string, string, string, string, string]>([
     'Уровень 0: ', 'Уровень 1: ', 'Уровень 2: ', 'Уровень 3: ', 'Уровень 4: '
@@ -80,6 +110,7 @@ export default function LeadDashboard({
 
   // Creating session state
   const [newSessionTitle, setNewSessionTitle] = useState('');
+  const [showCreateSessionForm, setShowCreateSessionForm] = useState(false);
   const [isSkillsDropdownOpen, setIsSkillsDropdownOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importDiff, setImportDiff] = useState<{
@@ -134,6 +165,7 @@ export default function LeadDashboard({
     });
 
     setNewSessionTitle('');
+    setShowCreateSessionForm(false);
   };
 
   // Export data to XLSX
@@ -261,6 +293,154 @@ export default function LeadDashboard({
         }
         
         event.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleExportEvaluationsXLSX = () => {
+    const evaluationMeta = evaluations.map(e => {
+      const sess = sessions.find(s => s.id === e.sessionId);
+      return {
+        'ID': e.id,
+        'Session ID': e.sessionId,
+        'Session Title': sess ? sess.title : '',
+        'Designer Name': e.designerName,
+        'Status': e.status,
+        'Date Submitted': e.dateSubmitted || '',
+        'Date Calibrated': e.dateCalibrated || '',
+        'Action Plan': e.actionPlan || ''
+      };
+    });
+
+    const evaluationScores: any[] = [];
+    evaluations.forEach(e => {
+      skills.forEach(s => {
+        const selfScore = e.selfScores[s.id] !== undefined ? e.selfScores[s.id] : '';
+        const calibratedScore = e.calibratedScores[s.id] !== undefined ? e.calibratedScores[s.id] : '';
+        const justification = e.calibrationJustifications[s.id] || '';
+        
+        evaluationScores.push({
+          'Evaluation ID': e.id,
+          'Designer Name': e.designerName,
+          'Skill ID': s.id,
+          'Skill Title': s.title,
+          'Self Score': selfScore,
+          'Calibrated Score': calibratedScore,
+          'Justification': justification
+        });
+      });
+    });
+
+    const worksheetMeta = XLSX.utils.json_to_sheet(evaluationMeta);
+    const worksheetScores = XLSX.utils.json_to_sheet(evaluationScores);
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheetMeta, 'Evaluations');
+    XLSX.utils.book_append_sheet(workbook, worksheetScores, 'Scores');
+
+    XLSX.writeFile(workbook, 'evaluations_data.xlsx');
+  };
+
+  const handleImportEvaluationsXLSX = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        
+        if (!workbook.Sheets['Evaluations']) {
+          console.error('Не найден лист "Evaluations" во временном файле импорта.');
+          return;
+        }
+
+        const metaSheet = workbook.Sheets['Evaluations'];
+        const metaRows = XLSX.utils.sheet_to_json(metaSheet) as any[];
+
+        const scoresSheet = workbook.Sheets['Scores'];
+        const scoreRows = scoresSheet ? (XLSX.utils.sheet_to_json(scoresSheet) as any[]) : [];
+
+        const scoresByEvalId: {
+          [evalId: string]: {
+            selfScores: { [skillId: string]: number };
+            calibratedScores: { [skillId: string]: number };
+            justifications: { [skillId: string]: string };
+          };
+        } = {};
+
+        scoreRows.forEach((row: any) => {
+          const evalId = row['Evaluation ID'] || row['evaluation_id'] || '';
+          const skillId = row['Skill ID'] || row['skill_id'] || '';
+          if (!evalId || !skillId) return;
+
+          if (!scoresByEvalId[evalId]) {
+            scoresByEvalId[evalId] = {
+              selfScores: {},
+              calibratedScores: {},
+              justifications: {}
+            };
+          }
+
+          const selfScoreVal = row['Self Score'];
+          const calScoreVal = row['Calibrated Score'];
+          const justificationVal = row['Justification'] || '';
+
+          if (selfScoreVal !== undefined && selfScoreVal !== '') {
+            scoresByEvalId[evalId].selfScores[skillId] = parseInt(selfScoreVal, 10);
+          }
+          if (calScoreVal !== undefined && calScoreVal !== '') {
+            scoresByEvalId[evalId].calibratedScores[skillId] = parseInt(calScoreVal, 10);
+          }
+          if (justificationVal) {
+            scoresByEvalId[evalId].justifications[skillId] = String(justificationVal);
+          }
+        });
+
+        const importedEvaluations: Evaluation[] = metaRows.map((row: any) => {
+          const id = row['ID'] || row['id'] || `eval-${Date.now()}-${Math.random()}`;
+          const sessionId = row['Session ID'] || row['session_id'] || (sessions[0]?.id || 'session-general');
+          const designerName = row['Designer Name'] || row['designer_name'] || 'Без имени';
+          const status = row['Status'] || row['status'] || 'submitted';
+          const dateSubmitted = row['Date Submitted'] || row['date_submitted'] || new Date().toISOString().split('T')[0];
+          const dateCalibrated = row['Date Calibrated'] || row['date_calibrated'] || undefined;
+          const actionPlan = row['Action Plan'] || row['action_plan'] || '';
+
+          const scoresObj = scoresByEvalId[id] || { selfScores: {}, calibratedScores: {}, justifications: {} };
+
+          return {
+            id,
+            sessionId,
+            designerName,
+            status: status === 'calibrated' ? 'calibrated' : 'submitted',
+            dateSubmitted,
+            dateCalibrated,
+            actionPlan,
+            selfScores: scoresObj.selfScores,
+            calibratedScores: scoresObj.calibratedScores,
+            calibrationJustifications: scoresObj.justifications
+          };
+        });
+
+        let mergedEvaluations = [...evaluations];
+        importedEvaluations.forEach(imp => {
+          const index = mergedEvaluations.findIndex(e => e.id === imp.id);
+          if (index > -1) {
+            mergedEvaluations[index] = imp;
+          } else {
+            mergedEvaluations.push(imp);
+          }
+        });
+
+        onStateChange({
+          ...appState,
+          evaluations: mergedEvaluations
+        });
+      } catch (err) {
+        console.error('Error importing evaluations:', err);
+      } finally {
+        event.target.value = '';
+      }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -542,6 +722,7 @@ export default function LeadDashboard({
 
   // Competence updates
   const startEditCategory = (cat: Category | null) => {
+    setConfirmDeleteCat(false);
     if (cat) {
       setEditingCategory(cat);
       setCatTitle(cat.title);
@@ -577,15 +758,26 @@ export default function LeadDashboard({
   };
 
   const deleteCategory = (id: string) => {
-    onStateChange({
-      ...appState,
-      categories: categories.filter(c => c.id !== id),
-      skills: skills.filter(s => s.categoryId !== id)
+    onStateChange(prev => {
+      const remainingSkills = prev.skills.filter(s => s.categoryId !== id);
+      const remainingSkillIds = new Set(remainingSkills.map(s => s.id));
+      return {
+        ...prev,
+        categories: prev.categories.filter(c => c.id !== id),
+        skills: remainingSkills,
+        profiles: prev.profiles.map(p => ({
+          ...p,
+          requirements: p.requirements.filter(r => remainingSkillIds.has(r.skillId))
+        }))
+      };
     });
+    setEditingCategory(null);
+    setConfirmDeleteCat(false);
   };
 
   // Skills Constructor updates
   const startEditSkill = (sk: Skill | null, categoryId?: string) => {
+    setConfirmDeleteSkill(false);
     if (sk) {
       setEditingSkill(sk);
       setSkillTitle(sk.title);
@@ -600,11 +792,11 @@ export default function LeadDashboard({
         title: '',
         description: '',
         levels: [
-          'Уровень 0: Навык не применяется / отсутствует.',
-          'Уровень 1 (Junior): Выполняет базовые задачи по инструкции под присмотром.',
-          'Уровень 2 (Middle): Самостоятельно решает стандартные практические задачи.',
-          'Уровень 3 (Senior): Решает нестандартные задачи, консультирует и обучает других.',
-          'Уровень 4 (Expert): Трансформирует методы, задает отраслевые стандарты.'
+          'Навык не применяется / отсутствует.',
+          'Выполняет базовые задачи по инструкции под присмотром',
+          'Самостоятельно решает стандартные практические задачи',
+          'Решает нестандартные задачи, консультирует и обучает других',
+          'Трансформирует методы, задает отраслевые стандарты'
         ],
         weight: 0.20
       });
@@ -612,11 +804,11 @@ export default function LeadDashboard({
       setSkillDesc('');
       setSkillCatId(categoryId || categories[0]?.id || '');
       setSkillLevels([
-        'Уровень 0: Навык не применяется / отсутствует.',
-        'Уровень 1 (Junior): Выполняет базовые задачи по инструкции под присмотром.',
-        'Уровень 2 (Middle): Самостоятельно решает стандартные практические задачи.',
-        'Уровень 3 (Senior): Решает нестандартные задачи, консультирует и обучает других.',
-        'Уровень 4 (Expert): Трансформирует методы, задает отраслевые стандарты.'
+        'Навык не применяется / отсутствует.',
+        'Выполняет базовые задачи по инструкции под присмотром',
+        'Самостоятельно решает стандартные практические задачи',
+        'Решает нестандартные задачи, консультирует и обучает других',
+        'Трансформирует методы, задает отраслевые стандарты'
       ]);
       setSkillWeight(0.20);
     }
@@ -656,9 +848,70 @@ export default function LeadDashboard({
   };
 
   const deleteSkill = (id: string) => {
+    onStateChange(prev => {
+      const remainingSkills = prev.skills.filter(s => s.id !== id);
+      const remainingSkillIds = new Set(remainingSkills.map(s => s.id));
+      return {
+        ...prev,
+        skills: remainingSkills,
+        profiles: prev.profiles.map(p => ({
+          ...p,
+          requirements: p.requirements.filter(r => remainingSkillIds.has(r.skillId))
+        }))
+      };
+    });
+    setEditingSkill(null);
+    setConfirmDeleteSkill(false);
+  };
+
+  const moveCategory = (id: string, direction: 'up' | 'down') => {
+    const index = categories.findIndex(c => c.id === id);
+    if (index === -1) return;
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === categories.length - 1) return;
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const newCategories = [...categories];
+    const temp = newCategories[index];
+    newCategories[index] = newCategories[targetIndex];
+    newCategories[targetIndex] = temp;
+
     onStateChange({
       ...appState,
-      skills: skills.filter(s => s.id !== id)
+      categories: newCategories
+    });
+  };
+
+  const moveSkill = (skillId: string, direction: 'up' | 'down') => {
+    const skill = skills.find(s => s.id === skillId);
+    if (!skill) return;
+    const catId = skill.categoryId;
+
+    const catSkills = skills.filter(s => s.categoryId === catId);
+    const localIndex = catSkills.findIndex(s => s.id === skillId);
+    if (localIndex === -1) return;
+    if (direction === 'up' && localIndex === 0) return;
+    if (direction === 'down' && localIndex === catSkills.length - 1) return;
+
+    const targetIndex = direction === 'up' ? localIndex - 1 : localIndex + 1;
+    const updatedCatSkills = [...catSkills];
+    const temp = updatedCatSkills[localIndex];
+    updatedCatSkills[localIndex] = updatedCatSkills[targetIndex];
+    updatedCatSkills[targetIndex] = temp;
+
+    let catSkillInsertedCount = 0;
+    const newGlobalSkills = skills.map(s => {
+      if (s.categoryId === catId) {
+        const replacement = updatedCatSkills[catSkillInsertedCount];
+        catSkillInsertedCount++;
+        return replacement;
+      }
+      return s;
+    });
+
+    onStateChange({
+      ...appState,
+      skills: newGlobalSkills
     });
   };
 
@@ -983,7 +1236,7 @@ export default function LeadDashboard({
       {/* 1. CALIBRATIONS tab */}
       {activeTab === 'calibrations' && !calibratingEval && (
         <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-0">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Анкеты
@@ -992,16 +1245,23 @@ export default function LeadDashboard({
                 Просмотр и калибровка заполненных анкет сотрудников. Сравнивайте оценки самопроверки с профессиональными ожиданиями и утверждайте карьерные действия.
               </p>
             </div>
+            <div className="flex gap-2">
+                <button
+                    onClick={handleExportEvaluationsXLSX}
+                    className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                    <Download className="w-4 h-4" />
+                    Экспорт
+                </button>
+                <label className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    Импорт
+                    <input type="file" accept=".xlsx" onChange={handleImportEvaluationsXLSX} className="hidden" />
+                </label>
+            </div>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-5 bg-white border-b border-slate-250/60">
-              <h3 className="font-bold text-slate-900 text-lg">Поток заполненных анкет дизайнеров</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Список ответов, отправленных дизайнерами. Те, которые помечены статусом «Заполнена», требуют вашей калибровки и составления Плана действий.
-              </p>
-            </div>
-
             <div className="divide-y divide-slate-100">
               {evaluations.length === 0 ? (
                 <div className="text-center py-12 px-6">
@@ -1020,43 +1280,50 @@ export default function LeadDashboard({
                         <div className="flex items-center gap-2 flex-wrap">
                           <strong className="text-slate-900 text-sm font-extrabold">{e.designerName}</strong>
                           {e.status === 'calibrated' ? (
-                            <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-2 py-0.5 rounded-full uppercase">
+                            <span className="text-sm bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-2 py-0.5 rounded-full">
                               ✓ Утверждена
                             </span>
                           ) : (
-                            <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-100 font-bold px-2 py-0.5 rounded-full uppercase">
+                            <span className="text-sm bg-amber-50 text-amber-800 border border-amber-100 font-bold px-2 py-0.5 rounded-full">
                               ⌛ Нужна калибровка
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-sm text-slate-500">
                           Сессия: <span className="font-semibold">{sess?.title}</span> • Профиль: <span className="font-bold">{prof?.title}</span>
                         </p>
-                        <span className="text-[10px] text-slate-400 block">Отправлено сотрудником: {e.dateSubmitted}</span>
+                        <span className="text-sm text-slate-400 block">Отправлено сотрудником: {e.dateSubmitted}</span>
                       </div>
 
                       <div className="flex gap-2.5 shrink-0 items-center">
-                        <button
-                          onClick={() => startCalibration(e)}
-                          className={`text-xs font-semibold px-4 py-2 rounded-lg border cursor-pointer flex items-center gap-1.5 transition-all ${
-                            e.status === 'calibrated'
-                              ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
-                              : 'bg-indigo-650 text-white hover:bg-indigo-750 border-indigo-600 shadow-sm'
-                          }`}
-                        >
-                          <MessageSquareCode className="w-3.5 h-3.5" />
-                          <span>{e.status === 'calibrated' ? 'Редактировать калибровку' : 'Откалибровать баллы'}</span>
-                        </button>
+                        {e.status === 'calibrated' ? (
+                          <button
+                            onClick={() => startCalibration(e)}
+                            className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-2 rounded-lg cursor-pointer flex items-center justify-center transition-all shadow-sm"
+                            title="Редактировать калибровку"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => startCalibration(e)}
+                            className="bg-blue-600 text-white hover:bg-blue-700 border border-blue-600 text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
+                            title="Откалибровать баллы"
+                          >
+                            <MessageSquareCode className="w-3.5 h-3.5" />
+                            <span>Откалибровать баллы</span>
+                          </button>
+                        )}
 
                         {e.status === 'calibrated' && (
                           <a
                             href={`?link=designer-profile&designerId=${e.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="hover:bg-slate-100 bg-white border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 rounded-lg flex items-center gap-1 cursor-pointer transition-all no-underline"
+                            className="hover:bg-slate-100 bg-white border border-slate-200 p-2 text-slate-700 rounded-lg flex items-center justify-center transition-all no-underline shadow-sm"
+                            title="Просмотр ЛК"
                           >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>Просмотр ЛК</span>
+                            <Eye className="w-4 h-4" />
                           </a>
                         )}
 
@@ -1172,15 +1439,15 @@ export default function LeadDashboard({
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
                         {/* LEFT COLUMN: Designer Self Selection */}
                         <div className="bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200">
-                          <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider mb-2">Самооценка дизайнера: {currentSelfValue} балла</span>
-                          <p className="text-xs text-slate-600 bg-white p-3 rounded-lg border border-slate-200 leading-relaxed font-medium">
+                          <span className="text-sm text-slate-400 block font-semibold tracking-wider mb-2">Самооценка дизайнера: {currentSelfValue} балла</span>
+                          <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200 leading-relaxed font-medium">
                             {skill.levels[currentSelfValue] || 'Описание отсутствует'}
                           </p>
                         </div>
 
                         {/* RIGHT COLUMN: Calibration Controls */}
                         <div className="space-y-3">
-                          <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Калибровка лидера компетенции:</span>
+                          <span className="text-sm text-slate-400 block font-semibold tracking-wider">Калибровка лидера компетенции:</span>
                           <div className="flex flex-wrap gap-1.5">
                             {[0, 1, 2, 3, 4].map(lvl => {
                               const isChecked = currentCalibratedValue === lvl;
@@ -1189,7 +1456,7 @@ export default function LeadDashboard({
                                   key={lvl}
                                   type="button"
                                   onClick={() => handleCalibrationScoreChange(skill.id, lvl)}
-                                  className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs border transition-all cursor-pointer ${
+                                  className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm border transition-all cursor-pointer ${
                                     isChecked
                                       ? 'bg-indigo-600 text-white border-indigo-705 shadow-md scale-[1.05]'
                                       : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
@@ -1203,14 +1470,14 @@ export default function LeadDashboard({
                           </div>
 
                           {/* Interactive preview description of the calibrated score */}
-                          <p className="text-[11px] text-slate-400 italic font-medium lines-2-capped">
+                          <p className="text-sm text-slate-400 italic font-medium lines-2-capped">
                             Выбран: {skill.levels[currentCalibratedValue]}
                           </p>
 
                           {/* Mandatory Justification (Justification text input Scenario 4.3) */}
                           {isModified && (
                             <div className="space-y-1.5 pt-2 animate-fadeIn">
-                              <label className="block text-[11px] text-amber-800 font-extrabold uppercase tracking-wide">
+                              <label className="block text-sm text-amber-800 font-extrabold tracking-wide">
                                 Обоснование калибровки (обязательно) <span className="text-red-500">*</span>
                               </label>
                               <textarea
@@ -1221,7 +1488,7 @@ export default function LeadDashboard({
                                   [skill.id]: e.target.value
                                 }))}
                                 placeholder="Формально обоснуйте на русском языке причину корректировки балла (например: слабые макеты в Figma / отличная автономная проработка CJM в майском релизе)"
-                                className="w-full text-xs font-medium p-2.5 bg-amber-50/40 focus:bg-white text-slate-800 rounded-lg border border-amber-200/80 outline-none focus:ring-2 focus:ring-indigo-500 h-20"
+                                className="w-full text-sm font-medium p-2.5 bg-amber-50/40 focus:bg-white text-slate-800 rounded-lg border border-amber-200/80 outline-none focus:ring-2 focus:ring-indigo-500 h-20"
                               />
                             </div>
                           )}
@@ -1234,8 +1501,8 @@ export default function LeadDashboard({
 
               {/* ИПР ACTION PLAN COMPILER (Scenario 4.4) */}
               <div className="pt-6 border-t border-slate-200 space-y-3">
-                <h4 className="font-extrabold text-slate-900 text-sm uppercase tracking-wider">
-                  ПЛАН ДЕЙСТВИЙ (РЕКОМЕНДУЕМЫЕ КНИГИ, КУРСЫ, ЦЕЛИ)
+                <h4 className="font-extrabold text-slate-900 text-sm tracking-wider">
+                  План действий (рекомендуемые книги, курсы, цели)
                 </h4>
                 <p className="text-xs text-slate-500">
                   Заполните подробные индивидуальные рекомендации для развития данного дизайнера. Эта информация мгновенно появится в его личном профиле в кабинете самооценки.
@@ -1278,7 +1545,7 @@ export default function LeadDashboard({
       {/* 2. SESSIONS tab */}
       {activeTab === 'sessions' && (
         <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-0">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Сессии
@@ -1287,45 +1554,61 @@ export default function LeadDashboard({
                 Запуск новых сессий оценки. Анкеты будут обрабатываться индивидуально по итогам заполнения.
               </p>
             </div>
+            {!showCreateSessionForm && (
+              <button
+                onClick={() => setShowCreateSessionForm(true)}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Добавить</span>
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
           {/* Create new Session Form */}
-          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 h-fit">
-            <h4 className="font-extrabold text-slate-900 border-b border-slate-100 pb-2.5">Запустить сбор оценок</h4>
-            <form onSubmit={handleCreateSession} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">Название сессии</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Например: Осенняя оценка 2026"
-                  value={newSessionTitle}
-                  onChange={(e) => setNewSessionTitle(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white"
-                />
-              </div>
+          {showCreateSessionForm && (
+            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 h-fit">
+              <h4 className="font-extrabold text-slate-900 border-b border-slate-100 pb-2.5">Запустить сбор оценок</h4>
+              <form onSubmit={handleCreateSession} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">Название сессии</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Например: Осенняя оценка 2026"
+                    value={newSessionTitle}
+                    onChange={(e) => setNewSessionTitle(e.target.value)}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white"
+                  />
+                </div>
 
-              <button
-                type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Создать новую анкету</span>
-              </button>
-            </form>
-          </div>
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateSessionForm(false)}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center transition-all cursor-pointer"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Создать</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           {/* List of active/archive sessions (Scenario 2) */}
-          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200">
-              <h4 className="font-extrabold text-slate-900">Реестр анкетных сессий</h4>
-            </div>
-
+          <div className={`${showCreateSessionForm ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden`}>
             <div className="divide-y divide-slate-150">
               {sessions.length === 0 ? (
-                <p className="text-xs text-slate-400 italic p-6 text-center">Созданных сессий нет.</p>
+                <p className="text-sm text-slate-400 italic p-6 text-center">Созданных сессий нет.</p>
               ) : (
                 sessions.map(sess => {
                   const mappedProfile = profiles.find(p => p.id === sess.profileId);
@@ -1335,18 +1618,18 @@ export default function LeadDashboard({
                     <div key={sess.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <strong className="text-slate-900 text-xs font-extrabold leading-normal">{sess.title}</strong>
+                          <strong className="text-slate-900 text-sm font-extrabold leading-normal">{sess.title}</strong>
                           {sess.status === 'active' ? (
-                            <span className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded uppercase">
+                            <span className="text-sm bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded">
                               Активна
                             </span>
                           ) : (
-                            <span className="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 font-bold px-1.5 py-0.5 rounded uppercase">
+                            <span className="text-sm bg-slate-100 text-slate-500 border border-slate-200 font-bold px-1.5 py-0.5 rounded">
                               В архиве
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-400 font-semibold mb-1">
+                        <p className="text-sm text-slate-400 font-semibold mb-1">
                           Профиль: {sess.profileId === 'profile-general' ? 'Любой (определяется индивидуально по итогам заполнения)' : (mappedProfile ? mappedProfile.title : 'Любой (определяется индивидуально по итогам заполнения)')}
                         </p>
                       </div>
@@ -1409,18 +1692,18 @@ export default function LeadDashboard({
       {/* 3. MATRICES tab */}
       {activeTab === 'profiles' && !editingProfile && (
         <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-0">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Профили
               </h1>
               <p className="text-slate-500 mt-2 text-sm max-w-2xl">
-                Профили должностей дизайнеров. Настраивайте целевые уровни владения навыками.
+                Добавляйте профили должностей сотрудников и настраивайте уровни владения навыками
               </p>
             </div>
             <button
               onClick={() => startEditProfile(null)}
-              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2.5 rounded-lg shadow-sm hover:shadow transition-all text-sm cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Добавить</span>
@@ -1428,17 +1711,16 @@ export default function LeadDashboard({
           </div>
 
           {/* Radar Chart Comparison */}
-          {profiles.length > 0 && categories.length > 0 && (
+          {sortedProfiles.length > 0 && categories.length > 0 && (
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
               <div className="mb-6">
                 <h3 className="text-lg font-bold text-slate-900">Сравнение профилей</h3>
-                <p className="text-xs text-slate-500 mt-1">Сравнительный анализ целевых уровней компетенций по всем направлениям</p>
               </div>
               <div className="h-[400px] w-full" key={activeTab}>
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="80%" data={categories.map(cat => {
                     const row: any = { subject: cat.title };
-                    profiles.forEach(p => {
+                    sortedProfiles.forEach(p => {
                       const catSkills = skills.filter(s => s.categoryId === cat.id);
                       const catReqs = p.requirements.filter(r => catSkills.some(s => s.id === r.skillId));
                       if (catReqs.length > 0) {
@@ -1468,13 +1750,14 @@ export default function LeadDashboard({
                       domain={[0, 4]} 
                       tick={{ fill: '#94a3b8', fontSize: 8 }}
                     />
-                    {profiles.slice(0, 5).map((p, idx) => {
+                    {sortedProfiles.slice(0, 6).map((p, idx) => {
                       const colors = [
                         '#4f46e5', // Indigo
                         '#10b981', // Emerald
                         '#f59e0b', // Amber
                         '#ef4444', // Red
-                        '#8b5cf6'  // Violet
+                        '#8b5cf6', // Violet
+                        '#06b6d4'  // Cyan
                       ];
                       const color = colors[idx % colors.length];
                       return (
@@ -1510,7 +1793,7 @@ export default function LeadDashboard({
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {profiles.map(p => {
+            {sortedProfiles.map(p => {
               const skillsAssoc = p.requirements.length;
               return (
                 <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
@@ -1524,16 +1807,18 @@ export default function LeadDashboard({
                     </span>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex justify-end gap-1.5">
+                  <div className="pt-2 border-t border-slate-100 flex justify-end items-center gap-1.5">
                     <button
                       onClick={() => startEditProfile(p)}
-                      className="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs px-3 py-1.5 rounded-lg border border-slate-200 cursor-pointer"
+                      className="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs p-1.5 rounded-lg border border-slate-200 cursor-pointer flex items-center justify-center"
+                      title="Редактировать"
                     >
-                      Редактировать
+                      <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => deleteProfile(p.id)}
-                      className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-700 p-1.5 border border-slate-200 rounded-lg cursor-pointer"
+                      className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-700 p-1.5 border border-slate-200 rounded-lg cursor-pointer flex items-center justify-center"
+                      title="Удалить"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1595,55 +1880,59 @@ export default function LeadDashboard({
                 placeholder="Опишите ожидания бизнеса, полномочия и функции данного сотрудника в компании."
                 value={profDesc}
                 onChange={(e) => setProfDesc(e.target.value)}
-                className="w-full text-xs font-medium p-3 bg-slate-50 border border-slate-200 rounded-lg min-h-[70px] outline-none focus:bg-white"
+                className="w-full text-sm font-medium p-3 bg-slate-50 border border-slate-200 rounded-lg min-h-[70px] outline-none focus:bg-white"
               />
             </div>
 
             {/* MATRIX OF TARGET LEVELS */}
             <div className="space-y-3">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-500 block">Матрица навыков: целевые уровни:</span>
+              <span className="text-sm font-bold tracking-wide text-slate-500 block">Матрица навыков: целевые уровни:</span>
               <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
-                {categories.map(cat => {
-                  const catSkills = skills.filter(s => s.categoryId === cat.id);
-                  if (catSkills.length === 0) return null;
+                {categories.length === 0 ? (
+                  <p className="text-sm text-slate-400 p-5 italic text-center bg-white">Для настройки требований профиля необходимо сначала создать навык и категорию в разделе «Навыки».</p>
+                ) : (
+                  categories.map(cat => {
+                    const catSkills = skills.filter(s => s.categoryId === cat.id);
+                    if (catSkills.length === 0) return null;
 
-                  return (
-                    <div key={cat.id} className="p-4 space-y-3 bg-slate-50/30">
-                      <span className="text-xs text-indigo-900 uppercase font-extrabold tracking-wider block bg-indigo-50/50 p-2 rounded">
-                        {cat.title}
-                      </span>
-                      <div className="space-y-4">
-                        {catSkills.map(sk => {
-                          const req = profRequirements.find(r => r.skillId === sk.id) || { skillId: sk.id, targetLevel: 0 };
-                          return (
-                            <div key={sk.id} className="bg-white p-4 border border-slate-250/70 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-                              <div className="space-y-0.5">
-                                <strong className="text-slate-800 text-xs font-bold block">{sk.title}</strong>
-                                <p className="text-[10px] text-slate-400 leading-normal max-w-sm font-medium">{sk.description}</p>
-                              </div>
+                    return (
+                      <div key={cat.id} className="p-4 space-y-3 bg-slate-50/30">
+                        <span className="text-sm text-indigo-900 font-extrabold tracking-wider block bg-indigo-50/50 p-2 rounded">
+                          {cat.title}
+                        </span>
+                        <div className="space-y-4">
+                          {catSkills.map(sk => {
+                            const req = profRequirements.find(r => r.skillId === sk.id) || { skillId: sk.id, targetLevel: 0 };
+                            return (
+                              <div key={sk.id} className="bg-white p-4 border border-slate-250/70 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="space-y-0.5">
+                                  <strong className="text-slate-800 text-sm font-bold block">{sk.title}</strong>
+                                  <p className="text-sm text-slate-400 leading-normal max-w-sm font-medium">{sk.description}</p>
+                                </div>
 
-                              <div className="flex items-center gap-6 text-xs text-slate-600">
-                                {/* Target Level Select */}
-                                <div className="space-y-1">
-                                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Целевой уровень (0-4)</span>
-                                  <select
-                                    value={req.targetLevel}
-                                    onChange={(e) => handleRequirementChange(sk.id, 'targetLevel', parseInt(e.target.value))}
-                                    className="p-1 px-2 border border-slate-200 bg-slate-50 rounded font-bold"
-                                  >
-                                    {[0, 1, 2, 3, 4].map(n => (
-                                      <option key={n} value={n}>{n} - Level</option>
-                                    ))}
-                                  </select>
+                                <div className="flex items-center gap-6 text-sm text-slate-600">
+                                  {/* Target Level Select */}
+                                  <div className="space-y-1">
+                                    <span className="text-sm text-slate-400 block font-bold">Целевой уровень (0-4)</span>
+                                    <select
+                                      value={req.targetLevel}
+                                      onChange={(e) => handleRequirementChange(sk.id, 'targetLevel', parseInt(e.target.value))}
+                                      className="p-1 px-2 border border-slate-200 bg-slate-50 rounded font-bold"
+                                    >
+                                      {[0, 1, 2, 3, 4].map(n => (
+                                        <option key={n} value={n}>{n} - Level</option>
+                                      ))}
+                                    </select>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -1670,7 +1959,7 @@ export default function LeadDashboard({
       {/* 4. COMPETENCIES tab */}
       {activeTab === 'competencies' && !editingCategory && !editingSkill && (
         <div className="space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-0">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
                 Навыки
@@ -1720,102 +2009,158 @@ export default function LeadDashboard({
             </div>
           </div>
           
-          {/* Atomic skill lists setup box */}
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-
-            </div>
-
             <div className="grid grid-cols-1 gap-6 pt-2">
-              {categories.map(cat => {
-                const associatedSkills = skills.filter(s => s.categoryId === cat.id);
-                const sumOfWeights = associatedSkills.reduce((sum, sk) => sum + (sk.weight ?? 0), 0);
-                const isBalanced = Math.abs(sumOfWeights - 1.0) < 0.001;
-
-                return (
-                  <div key={cat.id} className="relative border border-slate-200 rounded-xl p-5 bg-white shadow-sm space-y-3">
-                    <div className="absolute top-4 right-4 flex gap-1">
-                      <button onClick={() => startEditCategory(cat)} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold px-2 py-1 rounded text-[10px]">Изм.</button>
-                      <button onClick={() => deleteCategory(cat.id)} className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-700 p-1 border border-slate-200 rounded text-[10px]">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <h3 className="font-bold text-lg text-slate-900 truncate pr-16">
-                      {cat.title}
-                    </h3>
-                    {cat.description && <p className="text-xs text-slate-500">{cat.description}</p>}
-                    
-                    {/* Live Category Weight Validation display */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Балансировка весов:</span>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded transition-all text-[10px] font-bold font-mono ${
-                          isBalanced 
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                            : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
-                        }`}>
-                          {sumOfWeights.toFixed(2)} / 1.00 {isBalanced ? ' (✔️ Сбалансировано)' : ' (⚠️ Требуется балансировка)'}
-                        </span>
-                      </div>
-                      
-                      {associatedSkills.length > 0 && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => distributeWeightsEvenly(cat.id)}
-                            className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold px-2.5 py-1 rounded cursor-pointer transition-colors shadow-2xs"
-                            title="Распределить вес поровну между всеми навыками в этой категории"
-                          >
-                            Авто-баланс
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 pt-1">
-                      {associatedSkills.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">Навыков в этой группе нет.</p>
-                      ) : (
-                        associatedSkills.map(sk => (
-                          <div key={sk.id} className="bg-white p-3.5 border border-slate-200 rounded-lg flex items-center justify-between gap-4 shadow-2xs hover:scale-[1.002]">
-                            <div className="space-y-0.5 max-w-[340px]">
-                              <strong className="text-slate-800 text-xs font-bold block truncate">{sk.title}</strong>
-                              <p className="text-[10px] text-slate-450 truncate leading-snug">{sk.description}</p>
-                            </div>
-                            <div className="flex items-center gap-3 shrink-0">
-                              <div className="flex items-center gap-1">
-                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Вес:</span>
-                                <input
-                                  type="number"
-                                  min="0.0"
-                                  max="1.0"
-                                  step="0.05"
-                                  value={Math.round((sk.weight ?? 0.20) * 100) / 100}
-                                  onChange={(e) => updateSkillWeightDirectly(sk.id, parseFloat(e.target.value) || 0)}
-                                  className="w-14 text-center text-xs p-1 border border-slate-200 rounded-lg font-bold font-mono bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
-                                />
-                              </div>
-                              <div className="flex gap-1">
-                                <button
-                                  onClick={() => startEditSkill(sk)}
-                                  className="bg-slate-50 hover:bg-slate-150 text-slate-700 border border-slate-200 text-[10px] font-bold px-2 py-1 rounded cursor-pointer"
-                                >
-                                  Изм.
-                                </button>
-                                <button
-                                  onClick={() => deleteSkill(sk.id)}
-                                  className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-650 border border-slate-200 p-1 rounded cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
+              {categories.length === 0 ? (
+                <div className="text-center py-12 px-4 border border-slate-200 rounded-2xl bg-white max-w-xl mx-auto space-y-4 shadow-sm w-full">
+                  <BookOpen className="w-12 h-12 text-slate-300 mx-auto" strokeWidth={1.5} />
+                  <h3 className="text-sm font-bold text-slate-800">Нет категорий или навыков</h3>
+                  <p className="text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    Вы начали с чистого листа. Добавьте свою первую категорию компетенций, а затем наполните её профессиональными навыками.
+                  </p>
+                  <div className="flex justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => startEditCategory(null)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg cursor-pointer transition-colors shadow-2xs"
+                    >
+                      Создать категорию
+                    </button>
+                    <label className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer transition-colors shadow-2xs">
+                      <Upload className="w-3.5 h-3.5" />
+                      Импортировать XLSX
+                      <input type="file" accept=".xlsx" onChange={handleImportXLSX} className="hidden" />
+                    </label>
                   </div>
-                );
-              })}
+                </div>
+              ) : (
+                categories.map((cat, catIdx) => {
+                  const associatedSkills = skills.filter(s => s.categoryId === cat.id);
+                  const sumOfWeights = associatedSkills.reduce((sum, sk) => sum + (sk.weight ?? 0), 0);
+                  const isBalanced = Math.abs(sumOfWeights - 1.0) < 0.001;
+
+                  return (
+                    <div key={cat.id} className="relative border border-slate-200 rounded-xl p-5 bg-white shadow-sm space-y-3">
+                      <div className="absolute top-4 right-4 flex gap-1 items-center">
+                        <button
+                          disabled={catIdx === 0}
+                          onClick={() => moveCategory(cat.id, 'up')}
+                          className={`bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors ${
+                            catIdx === 0 ? 'opacity-35 cursor-not-allowed hover:bg-white' : ''
+                          }`}
+                          title="Переместить категорию вверх"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          disabled={catIdx === categories.length - 1}
+                          onClick={() => moveCategory(cat.id, 'down')}
+                          className={`bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors ${
+                            catIdx === categories.length - 1 ? 'opacity-35 cursor-not-allowed hover:bg-white' : ''
+                          }`}
+                          title="Переместить категорию вниз"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => startEditCategory(cat)}
+                          className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors"
+                          title="Редактировать категорию"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <h3 className="font-bold text-lg text-slate-900 truncate pr-16 border-b pb-2">
+                        {cat.title}
+                      </h3>
+                      {cat.description && <p className="text-sm text-slate-500 mt-1">{cat.description}</p>}
+                      
+                      {/* Live Category Weight Validation display */}
+                      <div className="flex flex-row items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg mt-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                          <span className="text-sm font-bold text-slate-400 whitespace-nowrap">Балансировка весов:</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded transition-all text-sm font-bold font-mono ${
+                            isBalanced 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-250/50' 
+                              : 'bg-amber-50 text-amber-700 border border-amber-250/50 animate-pulse'
+                          }`}>
+                            {sumOfWeights.toFixed(2)} / 1.00 {isBalanced ? ' (✔️ Сбалансировано)' : ' (⚠️ Требуется балансировка)'}
+                          </span>
+                        </div>
+                        
+                        {associatedSkills.length > 0 && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => distributeWeightsEvenly(cat.id)}
+                              className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-205 text-sm font-bold px-2.5 py-1 rounded cursor-pointer transition-colors shadow-2xs"
+                              title="Распределить вес поровну между всеми навыками в этой категории"
+                            >
+                              Авто-баланс
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 pt-1">
+                        {associatedSkills.length === 0 ? (
+                          <p className="text-sm text-slate-400 italic">Навыков в этой группе нет.</p>
+                        ) : (
+                          associatedSkills.map((sk, skIdx) => (
+                            <div key={sk.id} className="bg-white p-3.5 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 shadow-2xs hover:scale-[1.002]">
+                              <div className="space-y-0.5 flex-1 w-full truncate">
+                                <strong className="text-slate-800 text-sm font-bold block truncate">{sk.title}</strong>
+                                <p className="text-sm text-slate-450 leading-snug">{sk.description}</p>
+                              </div>
+                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t border-slate-100 sm:border-0 w-full sm:w-auto">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm text-slate-400 font-bold">Вес:</span>
+                                  <input
+                                    type="number"
+                                    min="0.0"
+                                    max="1.0"
+                                    step="0.05"
+                                    value={Math.round((sk.weight ?? 0.20) * 100) / 100}
+                                    onChange={(e) => updateSkillWeightDirectly(sk.id, parseFloat(e.target.value) || 0)}
+                                    className="w-14 text-center text-sm p-1 border border-slate-200 rounded-lg font-bold font-mono bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                                  />
+                                </div>
+                                <div className="flex gap-1">
+                                  <button
+                                    disabled={skIdx === 0}
+                                    onClick={() => moveSkill(sk.id, 'up')}
+                                    className={`bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs ${
+                                      skIdx === 0 ? 'opacity-30 cursor-not-allowed hover:bg-slate-50' : ''
+                                    }`}
+                                    title="Переместить навык вверх"
+                                  >
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    disabled={skIdx === associatedSkills.length - 1}
+                                    onClick={() => moveSkill(sk.id, 'down')}
+                                    className={`bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs ${
+                                      skIdx === associatedSkills.length - 1 ? 'opacity-30 cursor-not-allowed hover:bg-slate-50' : ''
+                                    }`}
+                                    title="Переместить навык вниз"
+                                  >
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => startEditSkill(sk)}
+                                    className="bg-slate-50 hover:bg-slate-150 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs"
+                                    title="Редактировать навык"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -1839,11 +2184,11 @@ export default function LeadDashboard({
       {editingCategory && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xl space-y-4">
           <h4 className="font-extrabold text-slate-900 border-b border-indigo-50 pb-2">
-            {editingCategory.id ? 'Изменить макро-категорию' : 'Добавить макро-категорию'}
+            {editingCategory.id ? 'Изменить категорию навыков' : 'Добавить категорию навыков'}
           </h4>
           <form onSubmit={saveCategory} className="space-y-4">
             <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700">Название категории</label>
+              <label className="block text-xs font-bold text-slate-700">Название</label>
               <input
                 type="text"
                 required
@@ -1853,27 +2198,64 @@ export default function LeadDashboard({
               />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700">Описание категории</label>
+              <label className="block text-xs font-bold text-slate-700">Описание</label>
               <textarea
                 value={catDesc}
                 onChange={(e) => setCatDesc(e.target.value)}
                 className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg min-h-[80px] outline-none edit:bg-white font-medium"
               />
             </div>
-            <div className="flex justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setEditingCategory(null)}
-                className="px-4 py-2 bg-slate-200 text-slate-800 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Отмена
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Сохранить
-              </button>
+            <div className="flex justify-between items-center pt-2">
+              {editingCategory.id ? (
+                confirmDeleteCat ? (
+                  <div className="flex gap-1.5 items-center bg-rose-50 border border-rose-100 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-rose-700 font-bold px-1">Удалить вместе с навыками?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteCategory(editingCategory.id);
+                        setEditingCategory(null);
+                        setConfirmDeleteCat(false);
+                      }}
+                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                    >
+                      Да, удалить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteCat(false)}
+                      className="px-2.5 py-1 bg-slate-250 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteCat(true)}
+                    className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Удалить категорию
+                  </button>
+                )
+              ) : (
+                <div />
+              )}
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingCategory(null)}
+                  className="px-4 py-2 bg-slate-200 text-slate-800 rounded-lg text-xs font-bold cursor-pointer hover:bg-slate-300 transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-indigo-700 transition-colors"
+                >
+                  Сохранить
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -1883,12 +2265,12 @@ export default function LeadDashboard({
       {editingSkill && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xl space-y-6">
           <h4 className="font-extrabold text-slate-900 border-b border-indigo-50 pb-2">
-            {editingSkill.id ? 'Редактировать прикладной навык' : 'Зарегистрировать прикладной навык'}
+            {editingSkill.id ? 'Редактировать навык' : 'Добавить навык'}
           </h4>
           <form onSubmit={saveSkill} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5 col-span-1">
-                <label className="block text-xs font-bold text-slate-700">Название навыка</label>
+                <label className="block text-xs font-bold text-slate-700">Название</label>
                 <input
                   type="text"
                   required
@@ -1915,7 +2297,7 @@ export default function LeadDashboard({
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-705">Краткое описание сути навыка</label>
+              <label className="block text-xs font-bold text-slate-700">Описание</label>
               <textarea
                 required
                 value={skillDesc}
@@ -1926,7 +2308,7 @@ export default function LeadDashboard({
 
             {/* Editing 5 behavioral description markers */}
             <div className="space-y-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-505 block">Развернутые поведенческие маркеры (Уровни 0-4):</span>
+              <label className="block text-xs font-bold text-slate-700">Уровни владения навыком</label>
               <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 {[0, 1, 2, 3, 4].map((n) => (
                   <div key={n} className="flex gap-3 text-xs items-start">
@@ -1942,7 +2324,7 @@ export default function LeadDashboard({
                         nextLevels[n] = e.target.value;
                         setSkillLevels(nextLevels);
                       }}
-                      className="w-full text-xs font-medium p-2 bg-white border border-slate-205 rounded-lg outline-none"
+                      className="w-full text-xs font-medium p-2 bg-white border border-slate-200 rounded-lg outline-none"
                       placeholder={`Описание уровня ${n}`}
                     />
                   </div>
@@ -1950,20 +2332,57 @@ export default function LeadDashboard({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3.5 bg-slate-50 border-t border-slate-100 p-4 -m-6 mt-4">
-              <button
-                type="button"
-                onClick={() => setEditingSkill(null)}
-                className="px-4 py-2 bg-slate-200 text-slate-800 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Отмена
-              </button>
-              <button
-                type="submit"
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer"
-              >
-                Сохранить навык
-              </button>
+            <div className="flex justify-between items-center bg-slate-50 border-t border-slate-100 p-4 -m-6 mt-4">
+              {editingSkill.id ? (
+                confirmDeleteSkill ? (
+                  <div className="flex gap-1.5 items-center bg-rose-50 border border-rose-100 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-rose-700 font-bold px-1">Удалить этот навык?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteSkill(editingSkill.id);
+                        setEditingSkill(null);
+                        setConfirmDeleteSkill(false);
+                      }}
+                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                    >
+                      Да, удалить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteSkill(false)}
+                      className="px-2.5 py-1 bg-slate-250 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteSkill(true)}
+                    className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold cursor-pointer transition-colors font-sans"
+                  >
+                    Удалить навык
+                  </button>
+                )
+              ) : (
+                <div />
+              )}
+              <div className="flex gap-3.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingSkill(null)}
+                  className="px-4 py-2 bg-slate-200 text-slate-800 rounded-lg text-xs font-bold cursor-pointer hover:bg-slate-300 transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-indigo-700 transition-colors"
+                >
+                  Сохранить
+                </button>
+              </div>
             </div>
           </form>
         </div>
