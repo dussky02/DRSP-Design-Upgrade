@@ -50,6 +50,7 @@ export interface SkillComments {
 export interface Evaluation {
   id: string;
   sessionId: string;
+  profileId?: string;
   designerName: string;
   selfScores: SkillScores;
   calibratedScores: SkillScores;

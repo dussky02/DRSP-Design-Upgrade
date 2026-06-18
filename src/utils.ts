@@ -153,8 +153,8 @@ export function determineMostSuitableProfile(
   // Sort descending (Senior -> Middle -> Junior)
   profilesWithAvgDemand.sort((a, b) => b.avgTarget - a.avgTarget);
 
-  // Find the highest-demanding profile where the designer has >= 70% coverage
-  const threshold = 70;
+  // Find the highest-demanding profile where the designer has >= 85% coverage
+  const threshold = 85;
   const matched = profilesWithAvgDemand.find(p => p.coverage >= threshold);
 
   if (matched) {
@@ -164,4 +164,44 @@ export function determineMostSuitableProfile(
   // Default to the lowest profile (last in the sorted list)
   return profilesWithAvgDemand[profilesWithAvgDemand.length - 1].profile;
 }
+
+export interface GoalItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+/**
+ * Parses a serialized JSON string representing goals or splits legacy plain text newline lists into GoalItems.
+ */
+export function parseActionPlan(actionPlanStr: string): GoalItem[] {
+  if (!actionPlanStr) return [];
+  const trimmed = actionPlanStr.trim();
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item: any, idx) => ({
+          id: item.id || `goal-${idx}-${Date.now()}-${Math.random()}`,
+          text: item.text || '',
+          completed: !!item.completed
+        }));
+      }
+    } catch (e) {
+      // JSON parse failed, proceed to fallback
+    }
+  }
+
+  // Treat legacy text as line-separated list
+  const lines = actionPlanStr.split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.map((line, idx) => {
+    const text = line.replace(/^\d+[\.\)\s]+|^\-\s+|^\*\s+/, '').trim();
+    return {
+      id: `legacy-${idx}-${Date.now()}`,
+      text,
+      completed: false
+    };
+  });
+}
+
 

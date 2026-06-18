@@ -9,6 +9,10 @@ import {
   Share2, Eye, ClipboardList, RefreshCw, ChevronRight, X, FileText, 
   Award, Compass, Copy, Check
 } from 'lucide-react';
+import { 
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, 
+  ResponsiveContainer, Tooltip 
+} from 'recharts';
 import { Category, Skill, Profile, Evaluation, Session, SkillScores } from '../types';
 import { calculateCategoryCoverage, calculateOverallCoverage, determineMostSuitableProfile } from '../utils';
 
@@ -32,14 +36,15 @@ export default function DirectorReport({
   onSelectDesignerDetails
  }: DirectorReportProps) {
   const [copied, setCopied] = useState(false);
-  const [selectedEvaluation, setSelectedEvaluation] = useState<Evaluation | null>(null);
 
   const getProfileForEvaluation = (evalItem: Evaluation, session: Session | undefined) => {
-    if (!session || session.profileId === 'profile-general') {
+    const profileIdToUse = evalItem.profileId && evalItem.profileId !== 'profile-general' ? evalItem.profileId : (session?.profileId);
+    
+    if (!profileIdToUse || profileIdToUse === 'profile-general') {
       const scores = evalItem.status === 'calibrated' ? evalItem.calibratedScores : evalItem.selfScores;
       return determineMostSuitableProfile(categories, skills, profiles, scores);
     }
-    return profiles.find(p => p.id === session.profileId) || profiles[0];
+    return profiles.find(p => p.id === profileIdToUse) || profiles[0];
   };
 
   // Filter out evaluations that are completed or submitted
@@ -142,7 +147,7 @@ export default function DirectorReport({
             Аналитика
           </h1>
           <p className="text-slate-500 mt-2 text-sm max-w-2xl">
-            Сводные метрики покрытия требований профилей, рейтинг командных дефицитов и индивидуальные результаты калибровки.
+            Сводные показатели команды
           </p>
         </div>
 
@@ -169,9 +174,9 @@ export default function DirectorReport({
 
       {/* Блок А: Верхняя панель инсайтов (Виджеты эффективности) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Widget 1: Количество дизайнеров */}
+        {/* Widget 1: Количество сотрудников */}
         <div id="stat-widget-count" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[110px]">
-          <p className="text-sm font-bold text-slate-400">Всего дизайнеров</p>
+          <p className="text-sm font-bold text-slate-400">Всего сотрудников</p>
           <div className="flex items-end gap-1.5 mt-2">
             <span className="text-3xl font-bold text-slate-800 leading-none">{totalDesignersCount}</span>
             <span className="text-slate-500 text-sm font-medium pb-0.5">чел.</span>
@@ -223,13 +228,9 @@ export default function DirectorReport({
         {/* Left column: Топ дефицитов навыков */}
         <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
           <div>
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-indigo-600" />
-              Рейтинг дефицитов компетенций (Командная просадка)
+            <h3 className="text-lg font-bold text-slate-900">
+              Дефициты компетенций
             </h3>
-            <p className="text-sm text-slate-500 mt-1">
-              Упорядоченный список навыков с наибольшим коллективным отставанием от плановых стандартов профилей участников с учетом веса каждого навыка.
-            </p>
           </div>
 
           <div className="space-y-4 pt-2">
@@ -248,9 +249,6 @@ export default function DirectorReport({
                         <span className="text-slate-800 font-semibold">{def.skill.title}</span>
                         <span className="text-slate-400">({def.category?.title})</span>
                       </div>
-                      <span className="text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded text-sm">
-                        Индекс дефицита: {Math.round(def.deficit * 100) / 100}
-                      </span>
                     </div>
                     {/* Progress Bar showing deficit */}
                     <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden flex">
@@ -261,7 +259,6 @@ export default function DirectorReport({
                     </div>
                     <div className="flex justify-between items-center text-sm text-slate-500">
                       <span>Отставание у {def.absoluteGapsCount} сотрудников</span>
-                      <span>Чем длиннее полоса, тем критичнее разрыв для бизнеса</span>
                     </div>
                   </div>
                 );
@@ -271,35 +268,38 @@ export default function DirectorReport({
         </div>
 
         {/* Right column: Category Context Indicators or quick guidelines */}
-        <div className="lg:col-span-5 bg-slate-50 rounded-xl border border-slate-200 p-6 space-y-4">
-          <h4 className="text-sm font-semibold text-slate-900">Целевые ориентиры покрытия по категориям</h4>
-          <p className="text-sm text-slate-400 leading-relaxed">
-            Каждому прикладному навыку заданы весовые коэффициенты. Ниже представлен общий процент покрытия требований профиля всей командой в среднем по категориям.
-          </p>
-
-          <div className="space-y-4 pt-2">
-            {categoryAverages.map(ca => (
-              <div key={ca.category.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="font-bold text-slate-800">{ca.category.title}</span>
-                  <span className="font-bold text-indigo-600">{ca.average}%</span>
-                </div>
-                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-indigo-600 h-full rounded-full" 
-                    style={{ width: `${ca.average}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-amber-50 rounded-lg p-3.5 border border-amber-200/60 text-sm text-amber-800 flex gap-2.5">
-            <Award className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="font-semibold block mb-0.5">Приоритеты ИПР</strong>
-              Каждый сотрудник имеет автоматическую приоритизацию навыков до следующего профиля на основе индекса важности. Нажмите «Подробнее» в таблице ниже, чтобы ознакомиться с персональной дорожной картой сотрудника.
-            </div>
+        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <h3 className="font-bold text-slate-900 text-lg">Навыки команды</h3>
+          <div className="h-[300px] w-full" key="skills-radar">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={categoryAverages}>
+                <PolarGrid stroke="#e2e8f0" />
+                <PolarAngleAxis 
+                  dataKey="category.title" 
+                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
+                />
+                <PolarRadiusAxis 
+                  angle={30} 
+                  domain={[0, 100]} 
+                  tick={{ fill: '#94a3b8', fontSize: 8 }}
+                />
+                <Radar
+                  name="Покрытие"
+                  dataKey="average"
+                  stroke="#4f46e5"
+                  fill="#4f46e5"
+                  fillOpacity={0.3}
+                  strokeWidth={2}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    borderRadius: '8px', 
+                    fontSize: '12px',
+                    fontWeight: 700
+                  }} 
+                />
+              </RadarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
@@ -308,13 +308,7 @@ export default function DirectorReport({
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white">
           <div>
-            <h3 className="font-bold text-slate-900 text-lg">Списочный состав и реестр аттестации команды</h3>
-            <p className="text-sm text-slate-400 mt-1">Оценки соответствия текущему профилю, количество выявленных суперсил и зон роста сотрудников.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium border border-slate-200">
-              Всего анкет: {activeEvaluations.length}
-            </span>
+            <h3 className="font-bold text-slate-900 text-lg">Команда</h3>
           </div>
         </div>
 
@@ -322,13 +316,13 @@ export default function DirectorReport({
           <table className="w-full text-sm text-left text-slate-600 border-collapse">
             <thead className="text-sm text-slate-400 border-b border-slate-100">
               <tr className="border-b border-slate-100">
-                <th className="px-6 py-4 font-semibold">ФИО сотрудника</th>
+                <th className="px-6 py-4 font-semibold">Сотрудник</th>
                 <th className="px-6 py-4 font-semibold">Профиль</th>
-                <th className="px-6 py-4 font-semibold text-center">% Соответствия</th>
+                <th className="px-6 py-4 font-semibold text-center">Соответствие</th>
                 <th className="px-6 py-4 font-semibold text-center">Суперсилы</th>
                 <th className="px-6 py-4 font-semibold text-center">Зоны роста</th>
-                <th className="px-6 py-4 font-semibold text-center">Статус анкеты</th>
-                <th className="px-6 py-4 font-semibold text-center">Действие</th>
+                <th className="px-6 py-4 font-semibold text-center">статус</th>
+                <th className="px-6 py-4 font-semibold text-center"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -337,18 +331,18 @@ export default function DirectorReport({
                 const profile = getProfileForEvaluation(evalItem, session);
                 
                 if (!profile) return null;
-
+ 
                 const scores = evalItem.status === 'calibrated' ? evalItem.calibratedScores : evalItem.selfScores;
                 
                 // Calculate match
                 const overallMatch = calculateOverallCoverage(categories, skills, profile, scores);
-
+ 
                 // Count Superpowers & Growth Areas
                 // Superpowers: fact >= target (where target > 0)
                 // Growth areas: fact < target (where target > 0)
                 let superpowersCount = 0;
                 let growthAreasCount = 0;
-
+ 
                 profile.requirements.forEach(req => {
                   if (req.targetLevel > 0) {
                     const factValue = scores[req.skillId] ?? 0;
@@ -359,12 +353,12 @@ export default function DirectorReport({
                     }
                   }
                 });
-
+ 
                 return (
                   <tr key={evalItem.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-6 py-4 font-bold text-slate-900 flex flex-col">
                       <span>{evalItem.designerName}</span>
-                      <span className="text-sm text-slate-400 font-normal">Отправлено {evalItem.dateSubmitted}</span>
+                      <span className="text-sm text-slate-400 font-normal">{evalItem.dateSubmitted}</span>
                     </td>
                     <td className="px-6 py-4 text-slate-700 font-medium">
                       {profile.title}
@@ -393,17 +387,17 @@ export default function DirectorReport({
                     <td className="px-6 py-4 text-center text-sm font-bold">
                       {evalItem.status === 'calibrated' ? (
                         <span className="text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
-                          ✓ Калибрована
+                          Готово
                         </span>
                       ) : (
                         <span className="text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
-                          Заполнена
+                          Ожидает калибровки
                         </span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button
-                        onClick={() => setSelectedEvaluation(evalItem)}
+                        onClick={() => onSelectDesignerDetails?.(evalItem.id)}
                         className="inline-flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm rounded-lg px-3 py-1.5 text-sm font-semibold cursor-pointer transition-all"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -417,216 +411,6 @@ export default function DirectorReport({
           </table>
         </div>
       </div>
-
-      {/* Modal / Slide-over detail panel for a designer's details */}
-      {selectedEvaluation && (() => {
-        const evalItem = selectedEvaluation;
-        const session = sessions.find(s => s.id === evalItem.sessionId);
-        const profile = getProfileForEvaluation(evalItem, session);
-        if (!profile) return null;
-
-        const scores = evalItem.status === 'calibrated' ? evalItem.calibratedScores : evalItem.selfScores;
-        const overallMatch = calculateOverallCoverage(categories, skills, profile, scores);
-
-        return (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div id="designer-detail-modal" className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 animate-scaleUp">
-              {/* Modal header */}
-              <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
-                <div>
-                  <h4 className="text-xl font-extrabold text-slate-900">{evalItem.designerName}</h4>
-                  <p className="text-sm text-slate-400 mt-1">
-                    Детальная карта оценки по профилю: <span className="font-semibold text-indigo-600">{profile.title}</span>
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelectedEvaluation(null)}
-                  className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Modal Content */}
-              <div className="p-6 space-y-6">
-                {/* Hero scorecard */}
-                <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <span className="text-sm text-indigo-300 font-bold">Общий балл покрытия требований</span>
-                    <h2 className="text-4xl font-extrabold">{overallMatch}%</h2>
-                    <p className="text-sm text-indigo-200">
-                      Статус: {evalItem.status === 'calibrated' ? 'Откалибровано лидером компетенции' : 'Ожидает калибровки'}
-                    </p>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="bg-white/10 px-4 py-2.5 rounded-lg text-center">
-                      <span className="text-sm text-slate-300 block">Статус анкеты</span>
-                      <strong className="text-sm block mt-1 font-bold text-emerald-300">
-                        {evalItem.status === 'calibrated' ? 'УТВЕРЖДЕНО' : 'ЗАПОЛНЕНО'}
-                      </strong>
-                    </div>
-                    {onSelectDesignerDetails && (
-                      <button
-                        onClick={() => {
-                          setSelectedEvaluation(null);
-                          onSelectDesignerDetails(evalItem.id);
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-lg shadow cursor-pointer transition-all flex items-center gap-1.5 shrink-0 hover:scale-[1.02]"
-                      >
-                        <Compass className="w-3.5 h-3.5" />
-                        <span>Открыть в Планшете калибровки</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Score differences visual bar for each Category */}
-                <div className="space-y-3">
-                  <h5 className="font-bold text-slate-800 text-sm">Сводка успеваемости по категориям:</h5>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {categories.map(cat => {
-                      const cov = calculateCategoryCoverage(cat.id, skills, profile, scores);
-                      return (
-                        <div key={cat.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                          <span className="text-slate-800 text-sm font-extrabold block truncate">{cat.title}</span>
-                          <div className="flex justify-between items-end mt-2">
-                            <span className="text-slate-400 text-sm">Процент соответствия</span>
-                            <span className="text-indigo-600 text-lg font-extrabold">{cov}%</span>
-                          </div>
-                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mt-1.5">
-                            <div className={`h-full rounded-full ${
-                              cov >= 90 ? 'bg-emerald-500' :
-                              cov >= 70 ? 'bg-indigo-500' : 'bg-amber-500'
-                            }`} style={{ width: `${cov}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Detailed skill scores list */}
-                <div className="space-y-4">
-                  <h5 className="font-bold text-slate-800 text-sm">Показатели навыков в деталях:</h5>
-                  <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
-                    {profile.requirements.map(req => {
-                      const skill = skills.find(s => s.id === req.skillId);
-                      if (!skill) return null;
-
-                      const selfVal = evalItem.selfScores[skill.id] ?? 0;
-                      const calVal = evalItem.calibratedScores[skill.id] ?? selfVal;
-                      const targetVal = req.targetLevel;
-                      const hasCalChange = evalItem.status === 'calibrated' && selfVal !== calVal;
-
-                      return (
-                        <div key={req.skillId} className="p-4 flex flex-col md:flex-row md:items-start justify-between gap-4 hover:bg-slate-50/50">
-                          <div className="space-y-1 max-w-lg">
-                            <span className="font-bold text-slate-900 border-b border-indigo-100 pb-0.5 inline-block text-sm">
-                              {skill.title}
-                            </span>
-                            <p className="text-sm text-slate-500 mt-1 lines-2-capped">{skill.description}</p>
-                          </div>
-
-                          <div className="flex items-center gap-6 shrink-0 text-sm font-semibold">
-                            {/* Score info badge */}
-                            <div className="flex gap-4">
-                              <div className="text-center">
-                                <span className="text-sm text-slate-400 block font-normal">Самооценка</span>
-                                <span className="text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-sm mt-1 block">
-                                  {selfVal}
-                                </span>
-                              </div>
-
-                              <div className="text-center">
-                                <span className="text-sm text-slate-400 block font-normal">Калибровка</span>
-                                <span className={`px-2 py-0.5 rounded text-sm mt-1 block ${
-                                  hasCalChange 
-                                    ? 'bg-amber-100 text-amber-800 font-bold border border-amber-200' 
-                                    : 'bg-indigo-50 text-indigo-700'
-                                }`}>
-                                  {calVal}
-                                </span>
-                              </div>
-
-                              <div className="text-center">
-                                <span className="text-sm text-slate-400 block font-normal">Требуется</span>
-                                <span className="text-slate-550 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded text-sm mt-1 block">
-                                  {targetVal}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Gap tag */}
-                            <div>
-                              {calVal >= targetVal ? (
-                                <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-sm font-bold border border-emerald-100 shrink-0">
-                                  Выполнено
-                                </span>
-                              ) : (
-                                <span className="bg-red-50 text-red-700 px-2 py-1 rounded text-sm font-bold border border-red-100 shrink-0">
-                                  Зазор -{targetVal - calVal}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Calibration comments logged */}
-                {Object.keys(evalItem.calibrationJustifications).length > 0 && (
-                  <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200/60 space-y-2.5">
-                    <h5 className="font-extrabold text-amber-900 text-sm flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 text-amber-600" />
-                      Обоснования изменений оценок лидом:
-                    </h5>
-                    <div className="space-y-3 divide-y divide-amber-200/40">
-                      {Object.entries(evalItem.calibrationJustifications).map(([skId, justification]) => {
-                        const sk = skills.find(s => s.id === skId);
-                        return (
-                          <div key={skId} className="pt-2 first:pt-0 text-sm">
-                            <span className="font-bold text-amber-900">{sk ? sk.title : 'Навык'}:</span>
-                            <p className="text-amber-800 italic mt-1 bg-white p-2.5 rounded border border-amber-200/50">
-                              « {justification} »
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Approved actions plans view */}
-                <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
-                  <h5 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Индивидуальный план развития от лидера компетенции:
-                  </h5>
-                  {evalItem.actionPlan ? (
-                    <div className="text-sm text-indigo-950 mt-3 whitespace-pre-wrap leading-relaxed bg-white/60 p-4 rounded-lg border border-indigo-100">
-                      {evalItem.actionPlan}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-indigo-500 italic mt-2">План действий находится на этапе разработки и согласования.</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Modal footer */}
-              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-                <button
-                  onClick={() => setSelectedEvaluation(null)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold rounded-lg text-sm transition-all cursor-pointer"
-                >
-                  Закрыть
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }

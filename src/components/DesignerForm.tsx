@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   CheckCircle, ArrowLeft, ArrowRight, Save, ShieldCheck, 
   HelpCircle, Sparkles, Send, User, ChevronRight
@@ -33,9 +33,20 @@ export default function DesignerForm({
   const [isNameStepActive, setIsNameStepActive] = useState(true);
 
   // Skills are filtered by profile requirements if the session is bound to a specific profile
-  const activeSkills = !session || session.profileId === 'profile-general'
-    ? skills
-    : skills.filter(s => profile && profile.requirements && profile.requirements.some(req => req.skillId === s.id));
+  const activeSkills = useMemo(() => {
+    const filtered = !session || session.profileId === 'profile-general'
+      ? skills
+      : skills.filter(s => profile && profile.requirements && profile.requirements.some(req => req.skillId === s.id));
+    
+    return [...filtered].sort((a, b) => {
+      const catAIndex = categories.findIndex(c => c.id === a.categoryId);
+      const catBIndex = categories.findIndex(c => c.id === b.categoryId);
+      if (catAIndex !== catBIndex) return catAIndex - catBIndex;
+      
+      // If categories are same, maintain original order (assuming skills array is already ordered within category)
+      return skills.indexOf(a) - skills.indexOf(b);
+    });
+  }, [session, profile, skills, categories]);
 
   if (activeSkills.length === 0) {
     return (
@@ -119,23 +130,18 @@ export default function DesignerForm({
     <div className="max-w-3xl mx-auto space-y-6 pt-4 pb-12 animate-fadeIn">
       {/* Start screen: user profile input */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Banner */}
-        <div className="bg-indigo-600 text-white px-8 py-7">
-          <h1 className="text-2xl font-black mt-3 tracking-tight">Анкета самооценки навыков</h1>
-          <p className="text-slate-150 text-sm mt-1.5 leading-relaxed font-medium">
-            Пожалуйста, честно оцените свои компетенции. Наиболее подходящий профиль должности будет определен автоматически по итогам прохождения анкеты.
-          </p>
-        </div>
+        {/* Banner Removed */}
 
         <form onSubmit={handleSubmit} className="p-8 space-y-8">
           {isNameStepActive ? (
             <>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-6">{session.title}</h1>
               {/* ФИО Input */}
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-slate-800 flex items-center gap-1.5">
                     <User className="w-4 h-4 text-indigo-500" />
-                    Ваши имя и фамилия (на русском языке) <span className="text-red-500">*</span>
+                    Ваши имя и фамилия <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -180,21 +186,21 @@ export default function DesignerForm({
                       style={{ width: `${progressPercent}%` }}
                     />
                   </div>
-                  <div className="flex justify-between items-center text-sm text-slate-400 font-bold">
+                  <div className="flex justify-between items-center text-sm text-slate-400 font-normal">
                     <span>Заполнение анкеты</span>
-                    <span>{progressPercent}% ({currentSkillIndex + 1} из {activeSkills.length})</span>
+                    <span>{currentSkillIndex + 1} из {activeSkills.length}</span>
                   </div>
                 </div>
 
                 {/* Target skill layout */}
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-5 space-y-2">
-                  <h3 className="text-lg font-bold text-slate-900 tracking-tight">{currentSkill.title}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed font-medium">{currentSkill.description}</p>
+                <div className="space-y-2">
+                  <h1 className="text-2xl font-black text-slate-900 tracking-tight">{currentSkill.title}</h1>
+                  <p className="text-base text-slate-600 leading-relaxed">{currentSkill.description}</p>
                 </div>
 
                 {/* 5 behavioral marker options (0-4) */}
                 <div className="space-y-3">
-                  <label className="block text-sm font-extrabold text-slate-500">
+                  <label className="block text-sm font-normal text-slate-500">
                     Выберите, что лучше всего описывает ваш опыт
                   </label>
 
@@ -213,7 +219,9 @@ export default function DesignerForm({
                           key={lvlIndex}
                           type="button"
                           onClick={() => handleSelectLevel(lvlIndex)}
-                          className="w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer flex items-start gap-3.5 hover:scale-[1.005]"
+                          className={`w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer flex items-start gap-3.5 hover:scale-[1.005] ${
+                              isSelected ? 'border-indigo-600' : 'border-slate-200'
+                          }`}
                         >
                           <div className={`mt-0.5 w-5 h-5 rounded-full shrink-0 flex items-center justify-center font-bold text-sm ${
                             isSelected 

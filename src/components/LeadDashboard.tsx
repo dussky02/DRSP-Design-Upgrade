@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, Settings, BookOpen, Layers, ClipboardList, CheckCircle2, 
   Trash2, Archive, Share2, Clipboard, Edit2, Check, AlertCircle, 
-  HelpCircle, Sparkles, Send, Save, ArrowLeft, RefreshCw, X, ShieldAlert,
+  HelpCircle, Sparkles, Send, Save, ArrowLeft, RefreshCw, X, ShieldAlert, Award,
   ChevronDown, ChevronUp, ArrowUp, ArrowDown, MessageSquareCode, Eye, Upload, Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { AppState, Category, Skill, Profile, Session, Evaluation, SkillScores, SkillComments } from '../types';
 import DirectorReport from './DirectorReport';
-import { determineMostSuitableProfile } from '../utils';
+import { determineMostSuitableProfile, calculateOverallCoverage, parseActionPlan, GoalItem } from '../utils';
 
 interface LeadDashboardProps {
   appState: AppState;
@@ -83,12 +83,33 @@ export default function LeadDashboard({
   const [calibrationScores, setCalibrationScores] = useState<SkillScores>({});
   const [calibrationJustifications, setCalibrationJustifications] = useState<SkillComments>({});
   const [calibrationActionPlan, setCalibrationActionPlan] = useState<string>('');
+  const [calibrationGoals, setCalibrationGoals] = useState<GoalItem[]>([]);
+
+  // Radar data calculation for calibration (Scenario 10.3)
+  const radarData = React.useMemo(() => {
+    if (!calibratingEval) return [];
+    const sess = sessions.find(s => s.id === calibratingEval.sessionId);
+    const prof = getProfileForEvaluation(calibratingEval, sess, calibrationScores);
+    if (!prof) return [];
+
+    return categories.map(cat => {
+      const catSkills = skills.filter(s => s.categoryId === cat.id);
+      const weightSum = catSkills.reduce((sum, s) => sum + (s.weight || 0.2), 0);
+      const catSelf = catSkills.reduce((sum, s) => sum + ((calibratingEval.selfScores[s.id] || 0) * (s.weight || 0.2)), 0) / (weightSum || 1);
+      const catTarget = catSkills.reduce((sum, s) => {
+        const req = prof.requirements.find(r => r.skillId === s.id);
+        return sum + ((req?.targetLevel || 0) * (s.weight || 0.2));
+      }, 0) / (weightSum || 1);
+      return { category: cat.title, Самооценка: Number(catSelf.toFixed(1)), Профиль: Number(catTarget.toFixed(1)) };
+    });
+  }, [categories, skills, calibratingEval, sessions, calibrationScores, profiles]);
 
   // Editing Category state
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [catTitle, setCatTitle] = useState('');
   const [catDesc, setCatDesc] = useState('');
   const [confirmDeleteCat, setConfirmDeleteCat] = useState(false);
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Record<string, boolean>>({});
 
   // Editing Skill state
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
@@ -111,6 +132,8 @@ export default function LeadDashboard({
   // Creating session state
   const [newSessionTitle, setNewSessionTitle] = useState('');
   const [showCreateSessionForm, setShowCreateSessionForm] = useState(false);
+  const [editingSession, setEditingSession] = useState<any>(null);
+  const [editSessionTitle, setEditSessionTitle] = useState('');
   const [isSkillsDropdownOpen, setIsSkillsDropdownOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importDiff, setImportDiff] = useState<{
@@ -125,16 +148,19 @@ export default function LeadDashboard({
   const [pendingImportProfilesRows, setPendingImportProfilesRows] = useState<any[]>([]);
   const [pendingImportSkillsRows, setPendingImportSkillsRows] = useState<any[]>([]);
   const [pendingImportCategoriesRows, setPendingImportCategoriesRows] = useState<any[]>([]);
+  const [pendingImportSessionsRows, setPendingImportSessionsRows] = useState<any[]>([]);
 
 
 
-  const getProfileForEvaluation = (e: Evaluation, session: Session | undefined, currentCalibrationScores?: SkillScores) => {
-    if (!session || session.profileId === 'profile-general') {
+  function getProfileForEvaluation(e: Evaluation, session: Session | undefined, currentCalibrationScores?: SkillScores) {
+    const profileIdToUse = e.profileId && e.profileId !== 'profile-general' ? e.profileId : (session?.profileId);
+    
+    if (!profileIdToUse || profileIdToUse === 'profile-general') {
       const scores = currentCalibrationScores || (e.status === 'calibrated' ? e.calibratedScores : e.selfScores);
       return determineMostSuitableProfile(categories, skills, profiles, scores);
     }
-    return profiles.find(p => p.id === session.profileId) || profiles[0];
-  };
+    return profiles.find(p => p.id === profileIdToUse) || profiles[0];
+  }
 
   // Helpers to copy token
   const handleCopyLink = (session: Session) => {
@@ -168,11 +194,25 @@ export default function LeadDashboard({
     setShowCreateSessionForm(false);
   };
 
+  const handleEditSession = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSession || !editSessionTitle.trim()) return;
+
+    onStateChange({
+      ...appState,
+      sessions: sessions.map(s => s.id === editingSession.id ? { ...s, title: editSessionTitle.trim() } : s)
+    });
+
+    setEditingSession(null);
+    setEditSessionTitle('');
+  };
+
   // Export data to XLSX
   const handleExportXLSX = () => {
     // Competencies sheet (Categories)
-    const categoryData = categories.map(cat => {
+    const categoryData = categories.map((cat, index) => {
         return {
+            'Order': index + 1,
             'ID': cat.id,
             'Title': cat.title,
             'Description': cat.description
@@ -180,9 +220,10 @@ export default function LeadDashboard({
     });
 
     // Competencies sheet (Skills)
-    const skillData = skills.map(skill => {
+    const skillData = skills.map((skill, index) => {
         const cat = categories.find(c => c.id === skill.categoryId);
         return {
+            'Order': index + 1,
             'ID': skill.id,
             'Category': cat?.title || '',
             'Skill Title': skill.title,
@@ -210,14 +251,27 @@ export default function LeadDashboard({
         };
     });
 
+    // Sessions sheet
+    const sessionData = sessions.map(session => {
+        return {
+            'ID': session.id,
+            'Title': session.title,
+            'Profile ID': session.profileId,
+            'Status': session.status,
+            'Share Token': session.shareToken
+        };
+    });
+
     const worksheetCategories = XLSX.utils.json_to_sheet(categoryData);
     const worksheetSkills = XLSX.utils.json_to_sheet(skillData);
     const worksheetProfiles = XLSX.utils.json_to_sheet(profileData);
+    const worksheetSessions = XLSX.utils.json_to_sheet(sessionData);
     
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheetCategories, 'Categories');
     XLSX.utils.book_append_sheet(workbook, worksheetSkills, 'Competencies');
     XLSX.utils.book_append_sheet(workbook, worksheetProfiles, 'Profiles');
+    XLSX.utils.book_append_sheet(workbook, worksheetSessions, 'Sessions');
     
     XLSX.writeFile(workbook, 'data.xlsx');
   };
@@ -291,6 +345,14 @@ export default function LeadDashboard({
             setPendingImportProfilesRows(rows); // Save for later
             setIsImportModalOpen(true);
         }
+
+        // Import Sessions
+        if (workbook.Sheets['Sessions']) {
+            const sheet = workbook.Sheets['Sessions'];
+            const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+            setPendingImportSessionsRows(rows);
+            setIsImportModalOpen(true);
+        }
         
         event.target.value = '';
     };
@@ -308,7 +370,16 @@ export default function LeadDashboard({
         'Status': e.status,
         'Date Submitted': e.dateSubmitted || '',
         'Date Calibrated': e.dateCalibrated || '',
-        'Action Plan': e.actionPlan || ''
+        'Action Plan': (() => {
+          if (!e.actionPlan) return '';
+          try {
+            const goals = parseActionPlan(e.actionPlan);
+            if (goals.length > 0) {
+              return goals.map((g, idx) => `${idx + 1}. [${g.completed ? 'x' : ' '}] ${g.text}`).join('\n');
+            }
+          } catch (err) {}
+          return e.actionPlan;
+        })()
       };
     });
 
@@ -608,17 +679,45 @@ export default function LeadDashboard({
         }
     });
     
+    // 4. Apply Sessions
+    let updatedSessions = [...sessions];
+    pendingImportSessionsRows.forEach((row: any) => {
+        const idVal = row['ID'] || row['id'] || '';
+        let index = -1;
+        if (idVal) {
+            index = updatedSessions.findIndex(s => s.id === idVal);
+        }
+        
+        const sessionData = {
+            title: row['Title'] || '',
+            profileId: row['Profile ID'] || 'profile-general',
+            status: row['Status'] || 'active',
+            shareToken: row['Share Token'] || `token-${Date.now()}-${Math.random()}`
+        };
+        
+        if (index > -1) {
+            updatedSessions[index] = { ...updatedSessions[index], ...sessionData };
+        } else {
+            updatedSessions.push({
+                id: idVal || `sess-${Date.now()}-${Math.random()}`,
+                ...sessionData
+            });
+        }
+    });
+
     // Reset Diffs
     setImportDiff({ profile: { new: [], updated: [] }, skill: { new: [], updated: [] }, category: { new: [], updated: [] } });
     setPendingImportProfilesRows([]);
     setPendingImportSkillsRows([]);
     setPendingImportCategoriesRows([]);
+    setPendingImportSessionsRows([]);
 
     onStateChange({
         ...appState,
         profiles: updatedProfiles,
         skills: updatedSkills,
-        categories: updatedCategories
+        categories: updatedCategories,
+        sessions: updatedSessions
     });
     setIsImportModalOpen(false);
   };
@@ -653,6 +752,7 @@ export default function LeadDashboard({
     setCalibrationScores({ ...evaluation.selfScores, ...evaluation.calibratedScores });
     setCalibrationJustifications({ ...evaluation.calibrationJustifications });
     setCalibrationActionPlan(evaluation.actionPlan || '');
+    setCalibrationGoals(parseActionPlan(evaluation.actionPlan || ''));
   };
 
   const handleCalibrationScoreChange = (skillId: string, value: number) => {
@@ -670,6 +770,12 @@ export default function LeadDashboard({
           [skillId]: ''
         }));
       }
+    }
+  };
+
+  const updateCalibratingEvalProfile = (profileId: string) => {
+    if (calibratingEval) {
+      setCalibratingEval({ ...calibratingEval, profileId });
     }
   };
 
@@ -702,9 +808,10 @@ export default function LeadDashboard({
       if (e.id === calibratingEval.id) {
         return {
           ...e,
+          profileId: calibratingEval.profileId,
           calibratedScores: calibrationScores,
           calibrationJustifications: justifications,
-          actionPlan: calibrationActionPlan,
+          actionPlan: JSON.stringify(calibrationGoals),
           status: 'calibrated' as const,
           dateCalibrated: new Date().toISOString().split('T')[0]
         };
@@ -1037,6 +1144,23 @@ export default function LeadDashboard({
     });
   };
 
+  const updateProfileRequirement = (profileId: string, skillId: string, targetLevel: number) => {
+    onStateChange((prev: AppState) => ({
+      ...prev,
+      profiles: prev.profiles.map(p => {
+        if (p.id !== profileId) return p;
+        const existing = p.requirements.find(r => r.skillId === skillId);
+        let newRequirements;
+        if (existing) {
+          newRequirements = p.requirements.map(r => r.skillId === skillId ? {...r, targetLevel} : r);
+        } else {
+          newRequirements = [...p.requirements, { skillId, targetLevel }];
+        }
+        return { ...p, requirements: newRequirements };
+      })
+    }));
+  };
+
   const validateAndSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!profTitle.trim()) return;
@@ -1213,9 +1337,11 @@ export default function LeadDashboard({
         >
           <CheckCircle2 className="w-4 h-4" />
           <span>Анкеты</span>
-          <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
-            {evaluations.filter(e => e.status === 'submitted').length}
-          </span>
+          {evaluations.filter(e => e.status === 'submitted').length > 0 && (
+            <span className="text-[10px] bg-amber-500 text-white font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-fadeIn">
+              {evaluations.filter(e => e.status === 'submitted').length}
+            </span>
+          )}
         </button>
 
         <button
@@ -1267,7 +1393,7 @@ export default function LeadDashboard({
                 <div className="text-center py-12 px-6">
                   <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-600">Поток заполненных анкет пуст</p>
-                  <p className="text-xs text-slate-400 mt-1">Здесь появятся анкеты после их отправки дизайнерами.</p>
+                  <p className="text-xs text-slate-400 mt-1">Здесь появятся анкеты после их отправки сотрудниками.</p>
                 </div>
               ) : (
                 evaluations.map(e => {
@@ -1281,17 +1407,18 @@ export default function LeadDashboard({
                           <strong className="text-slate-900 text-sm font-extrabold">{e.designerName}</strong>
                           {e.status === 'calibrated' ? (
                             <span className="text-sm bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-2 py-0.5 rounded-full">
-                              ✓ Утверждена
+                              Готово
                             </span>
                           ) : (
                             <span className="text-sm bg-amber-50 text-amber-800 border border-amber-100 font-bold px-2 py-0.5 rounded-full">
-                              ⌛ Нужна калибровка
+                              Ожидает калибровки
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-slate-500">
-                          Сессия: <span className="font-semibold">{sess?.title}</span> • Профиль: <span className="font-bold">{prof?.title}</span>
-                        </p>
+                        <div className="text-sm text-slate-500 space-y-0.5 mt-1">
+                          <div>Сессия: <span className="font-semibold">{sess?.title}</span></div>
+                          <div>Профиль: <span className="font-semibold text-slate-700">{prof?.title}</span></div>
+                        </div>
                         <span className="text-sm text-slate-400 block">Отправлено сотрудником: {e.dateSubmitted}</span>
                       </div>
 
@@ -1307,11 +1434,10 @@ export default function LeadDashboard({
                         ) : (
                           <button
                             onClick={() => startCalibration(e)}
-                            className="bg-blue-600 text-white hover:bg-blue-700 border border-blue-600 text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
-                            title="Откалибровать баллы"
+                            className="bg-blue-600 text-white hover:bg-blue-700 border border-blue-600 text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer flex items-center transition-all shadow-sm"
+                            title="Откалибровать"
                           >
-                            <MessageSquareCode className="w-3.5 h-3.5" />
-                            <span>Откалибровать баллы</span>
+                            <span>Откалибровать</span>
                           </button>
                         )}
 
@@ -1329,7 +1455,7 @@ export default function LeadDashboard({
 
                         <button
                           onClick={() => handleDeleteEvaluation(e.id)}
-                          className="p-2 border border-slate-250 text-slate-450 hover:text-red-650 hover:bg-red-50 hover:border-red-200 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-sm btn-delete-eval"
+                          className="p-2 border border-slate-200 text-slate-400 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-100 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-sm btn-delete-eval"
                           title="Удалить анкету"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1350,7 +1476,8 @@ export default function LeadDashboard({
         const prof = getProfileForEvaluation(calibratingEval, sess, calibrationScores);
         if (!prof) return null;
 
-        const calibrationList = sess?.profileId === 'profile-general'
+        const activeProfileId = calibratingEval.profileId && calibratingEval.profileId !== 'profile-general' ? calibratingEval.profileId : (sess?.profileId || 'profile-general');
+        const calibrationList = activeProfileId === 'profile-general'
           ? skills.map(skill => {
               const req = prof.requirements.find(r => r.skillId === skill.id);
               return {
@@ -1370,168 +1497,305 @@ export default function LeadDashboard({
               };
             }).filter(item => !!item.skill);
 
+        const superpowersCount = prof.requirements.reduce((count, req) => {
+          const score = calibrationScores[req.skillId] ?? 0;
+          if (req.targetLevel > 0 && score >= req.targetLevel) {
+            return count + 1;
+          }
+          return count;
+        }, 0);
+
+        const growthAreasCount = prof.requirements.reduce((count, req) => {
+          const score = calibrationScores[req.skillId] ?? 0;
+          if (req.targetLevel > 0 && score < req.targetLevel) {
+            return count + 1;
+          }
+          return count;
+        }, 0);
+
         return (
           <div className="space-y-6">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCalibratingEval(null)}
-                className="p-1 px-2.5 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg text-xs font-bold text-slate-700 cursor-pointer flex items-center gap-1 transition-all"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Назад к списку анкет</span>
-              </button>
-              <span className="text-slate-400 text-xs">/</span>
-              <span className="text-xs text-slate-500 font-bold bg-slate-105">Планшет калибровки: {calibratingEval.designerName}</span>
-            </div>
-
             {/* Layout Split Panels */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden p-6 space-y-6">
-              <div className="pb-4">
+            <div className="space-y-6">
+              {/* Header/Meta panel with session/submitted info */}
+              <div className="px-1 py-1">
                 <h2 className="text-xl font-extrabold text-slate-900">
                   Калибровка компетенций: {calibratingEval.designerName}
                 </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Предписываемая должность: <strong className="text-indigo-600">{prof.title}</strong> • Сессия анкетирования: {sess?.title}
-                </p>
-              </div>
-
-              {/* Notice banner for calibration math logic in Scenario 4 */}
-              <div className="bg-slate-50 text-slate-705 border border-slate-200 rounded-xl p-4 flex gap-3 text-xs">
-                <ShieldAlert className="w-5 h-5 text-indigo-505 shrink-0" />
-                <div>
-                  <strong className="text-slate-900">Правило двух колонок калибровки</strong>
-                  <p className="mt-1 text-slate-500 leading-relaxed font-medium">
-                    Ниже вы видите сопоставление ответов. Слева выводится выбранная самооценка дизайнера с текстовой формулировкой. Справа вы можете установить скорректированную оценку. В случае несогласия с самооценкой, система требует заполнить соответствующее поле <strong className="text-indigo-600 font-semibold">«Обоснование калибровки»</strong> на русском языке.
-                  </p>
+                <div className="text-xs text-slate-500 mt-2 flex flex-wrap gap-x-6 gap-y-1">
+                  <div>Сессия: <span className="font-semibold text-slate-700">{sess?.title}</span></div>
+                  <div>Отправлено: <span className="font-semibold text-slate-700">{calibratingEval.dateSubmitted}</span></div>
                 </div>
               </div>
 
-              {/* Skills list loop for calibration */}
-              <div className="space-y-6 divide-y divide-slate-100">
-                {calibrationList.map((item, itemIdx) => {
-                  const { skill, targetLevel, weight, isPartofRequired } = item;
-                  if (!skill) return null;
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Radar chart of calibration (Scenario 10.3) - on its own card */}
+                <div className="lg:col-span-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit lg:sticky lg:top-20">
+                  <div className="text-sm font-bold text-slate-800 mb-4 flex flex-wrap justify-between items-center gap-2">
+                    <div className="flex items-center gap-1.5 animate-fadeIn">
+                      <span className="text-slate-500 font-bold">Профиль:</span>
+                      <select 
+                        value={prof.id}
+                        onChange={(e) => {
+                            updateCalibratingEvalProfile(e.target.value);
+                        }}
+                        className="text-indigo-600 font-extrabold bg-transparent border-b border-dashed border-indigo-300 cursor-pointer focus:outline-none"
+                      >
+                        {profiles.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                      </select>
+                    </div>
+                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full font-bold">
+                      {calculateOverallCoverage(categories, skills, prof, calibrationScores)}% соответствия
+                    </span>
+                  </div>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                        <PolarGrid stroke="#e2e8f0" />
+                        <PolarAngleAxis dataKey="category" tick={{ fontSize: 10 }} />
+                        <PolarRadiusAxis angle={30} domain={[0, 4]} />
+                        <Radar name="Самооценка" dataKey="Самооценка" stroke="#4f46e5" fill="#4f46e5" fillOpacity={0.6} />
+                        <Radar name="Профиль" dataKey="Профиль" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.3} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
 
-                  const currentSelfValue = calibratingEval.selfScores[skill.id] ?? 0;
-                  const currentCalibratedValue = calibrationScores[skill.id] ?? currentSelfValue;
-                  const isModified = currentCalibratedValue !== currentSelfValue;
+                  {/* Superpowers and Growth Areas counters */}
+                  <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-100">
+                    <div className="bg-emerald-50/50 border border-emerald-100/70 p-3 rounded-xl flex flex-col items-center text-center">
+                      <span className="text-[10px] font-bold text-emerald-800 tracking-wide uppercase flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                        Суперсилы
+                      </span>
+                      <span className="text-xl font-black text-emerald-950 mt-1">{superpowersCount}</span>
+                    </div>
+                    <div className="bg-amber-50/50 border border-amber-100/70 p-3 rounded-xl flex flex-col items-center text-center">
+                      <span className="text-[10px] font-bold text-amber-800 tracking-wide uppercase flex items-center gap-1">
+                        <Award className="w-3.5 h-3.5 text-amber-600" />
+                        Зоны роста
+                      </span>
+                      <span className="text-xl font-black text-amber-950 mt-1">{growthAreasCount}</span>
+                    </div>
+                  </div>
+                </div>
 
-                  return (
-                    <div key={skill.id} className={`pt-6 ${itemIdx === 0 ? 'pt-0' : ''} space-y-4`}>
-                      {/* Skill identity */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 p-3 rounded-lg border border-slate-150">
-                        <div>
-                          <span className="font-extrabold text-slate-850 text-xs text-indigo-900">{skill.title}</span>
-                          <span className="text-[10px] text-slate-400 block">{skill.description}</span>
-                        </div>
-                        {isPartofRequired ? (
-                          <span className="text-[10px] bg-indigo-50 border border-indigo-100 font-bold px-2.5 py-0.5 rounded text-indigo-805 shrink-0">
-                            🎯 Требуемый уровень профиля {prof.title}: {targetLevel} (Вес навыка: {(skill.weight ?? 0.20).toFixed(2)})
-                          </span>
-                        ) : (
-                          <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-505 font-medium px-2.5 py-0.5 rounded shrink-0">
-                            Дополнительный навык для профиля {prof.title}
-                          </span>
-                        )}
-                      </div>
+                <div className="lg:col-span-2 space-y-6">
+                  {calibrationList.map((item) => {
+                    const { skill, targetLevel, weight, isPartofRequired } = item;
+                    if (!skill) return null;
 
-                      {/* Display Two Columns */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                        {/* LEFT COLUMN: Designer Self Selection */}
-                        <div className="bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200">
-                          <span className="text-sm text-slate-400 block font-semibold tracking-wider mb-2">Самооценка дизайнера: {currentSelfValue} балла</span>
-                          <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200 leading-relaxed font-medium">
-                            {skill.levels[currentSelfValue] || 'Описание отсутствует'}
-                          </p>
-                        </div>
+                    const currentSelfValue = calibratingEval.selfScores[skill.id] ?? 0;
+                    const currentCalibratedValue = calibrationScores[skill.id] ?? currentSelfValue;
+                    const isModified = currentCalibratedValue !== currentSelfValue;
+                    const isBelowTarget = currentSelfValue < targetLevel;
 
-                        {/* RIGHT COLUMN: Calibration Controls */}
-                        <div className="space-y-3">
-                          <span className="text-sm text-slate-400 block font-semibold tracking-wider">Калибровка лидера компетенции:</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {[0, 1, 2, 3, 4].map(lvl => {
-                              const isChecked = currentCalibratedValue === lvl;
-                              return (
-                                <button
-                                  key={lvl}
-                                  type="button"
-                                  onClick={() => handleCalibrationScoreChange(skill.id, lvl)}
-                                  className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm border transition-all cursor-pointer ${
-                                    isChecked
-                                      ? 'bg-indigo-600 text-white border-indigo-705 shadow-md scale-[1.05]'
-                                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-                                  }`}
-                                  title={skill.levels[lvl]}
-                                >
-                                  {lvl}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          {/* Interactive preview description of the calibrated score */}
-                          <p className="text-sm text-slate-400 italic font-medium lines-2-capped">
-                            Выбран: {skill.levels[currentCalibratedValue]}
-                          </p>
-
-                          {/* Mandatory Justification (Justification text input Scenario 4.3) */}
-                          {isModified && (
-                            <div className="space-y-1.5 pt-2 animate-fadeIn">
-                              <label className="block text-sm text-amber-800 font-extrabold tracking-wide">
-                                Обоснование калибровки (обязательно) <span className="text-red-500">*</span>
-                              </label>
-                              <textarea
-                                required
-                                value={calibrationJustifications[skill.id] || ''}
-                                onChange={(e) => setCalibrationJustifications(prev => ({
-                                  ...prev,
-                                  [skill.id]: e.target.value
-                                }))}
-                                placeholder="Формально обоснуйте на русском языке причину корректировки балла (например: слабые макеты в Figma / отличная автономная проработка CJM в майском релизе)"
-                                className="w-full text-sm font-medium p-2.5 bg-amber-50/40 focus:bg-white text-slate-800 rounded-lg border border-amber-200/80 outline-none focus:ring-2 focus:ring-indigo-500 h-20"
-                              />
-                            </div>
+                    return (
+                      <div key={skill.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        {/* Skill identity (Scenario 10.4) */}
+                        <div className="space-y-1">
+                          <h2 className="text-base font-medium text-slate-900">{skill.title}</h2>
+                          <p className="text-xs text-slate-400">{skill.description}</p>
+                          {isPartofRequired ? (
+                            <span className={`text-[10px] border px-2.5 py-0.5 rounded font-normal inline-block ${
+                              isBelowTarget 
+                                ? 'bg-red-50 border-red-200 text-red-700' 
+                                : 'bg-indigo-50 border-indigo-100 text-indigo-700'
+                            }`}>
+                              Требуемый уровень профиля {prof.title}: {targetLevel} (Вес: {(skill.weight ?? 0.20).toFixed(2)})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-500 font-normal px-2.5 py-0.5 rounded inline-block">
+                              Дополнительный навык для профиля {prof.title}
+                            </span>
                           )}
                         </div>
+
+                        {/* Display Two Columns */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                          {/* LEFT COLUMN: Designer Self Selection */}
+                          <div className="bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200">
+                            <span className="text-sm text-slate-400 block font-semibold tracking-wider mb-2">Самооценка сотрудника: {currentSelfValue} балла</span>
+                            <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200 leading-relaxed font-medium">
+                              {skill.levels[currentSelfValue] || 'Описание отсутствует'}
+                            </p>
+                          </div>
+
+                          {/* RIGHT COLUMN: Calibration Controls */}
+                          <div className="space-y-3">
+                            <span className="text-sm text-slate-400 block font-semibold tracking-wider">Калибровка лидера компетенции:</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {[0, 1, 2, 3, 4].map(lvl => {
+                                const isChecked = currentCalibratedValue === lvl;
+                                return (
+                                  <button
+                                    key={lvl}
+                                    type="button"
+                                    onClick={() => handleCalibrationScoreChange(skill.id, lvl)}
+                                    className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm border transition-all cursor-pointer ${
+                                      isChecked
+                                        ? 'bg-indigo-600 text-white border-indigo-705 shadow-md scale-[1.05]'
+                                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                                    }`}
+                                    title={skill.levels[lvl]}
+                                  >
+                                    {lvl}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Interactive preview description of the calibrated score */}
+                            <p className="text-sm text-slate-400 italic font-medium lines-2-capped">
+                              Выбран: {skill.levels[currentCalibratedValue]}
+                            </p>
+
+                            {/* Mandatory Justification (Justification text input Scenario 4.3) */}
+                            {isModified && (
+                              <div className="space-y-1.5 pt-2 animate-fadeIn">
+                                <label className="block text-sm text-amber-800 font-extrabold tracking-wide">
+                                  Обоснование калибровки (обязательно) <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                  required
+                                  value={calibrationJustifications[skill.id] || ''}
+                                  onChange={(e) => setCalibrationJustifications(prev => ({
+                                    ...prev,
+                                    [skill.id]: e.target.value
+                                  }))}
+                                  placeholder="Формально обоснуйте на русском языке причину корректировки балла (например: слабые макеты в Figma / отличная автономная проработка CJM в майском релизе)"
+                                  className="w-full text-sm font-medium p-2.5 bg-amber-50/40 focus:bg-white text-slate-800 rounded-lg border border-amber-200/80 outline-none focus:ring-2 focus:ring-indigo-500 h-20"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* ИПР ACTION PLAN COMPILER (Scenario 4.4) */}
-              <div className="pt-6 border-t border-slate-200 space-y-3">
-                <h4 className="font-extrabold text-slate-900 text-sm tracking-wider">
-                  План действий (рекомендуемые книги, курсы, цели)
-                </h4>
-                <p className="text-xs text-slate-500">
-                  Заполните подробные индивидуальные рекомендации для развития данного дизайнера. Эта информация мгновенно появится в его личном профиле в кабинете самооценки.
+              {/* ИПР ACTION PLAN COMPILER (Interactive Checklist) - on its own card */}
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-extrabold text-slate-900 text-sm tracking-widest uppercase">
+                    Индивидуальный план развития (список целей)
+                  </h4>
+                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
+                    Целей: {calibrationGoals.length}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 leading-normal">
+                  Добавьте конкретные цели в план развития данного сотрудника. Они мгновенно появятся в его личном профиле в виде интерактивных чекбоксов.
                 </p>
-                <textarea
-                  required
-                  value={calibrationActionPlan}
-                  onChange={(e) => setCalibrationActionPlan(e.target.value)}
-                  placeholder="В свободной форме опишите конкретные действия:
-1. Прочитать книгу 'Дизайн привычных вещей' Дональда Нормана до 30 августа.
-2. Пройти курс по количественному анализу и А/Б тестам.
-3. Провести созвон-ликбез по Figma Variables для стажеров."
-                  className="w-full text-xs font-medium p-4 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 min-h-[140px]"
-                />
+
+                {/* Add new goal form */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    id="new-goal-input"
+                    placeholder="Введите новую цель, книгу, курс или задачу..."
+                    className="flex-1 text-xs font-semibold p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = e.currentTarget.value.trim();
+                        if (val) {
+                          setCalibrationGoals(prev => [
+                            ...prev,
+                            { id: `goal-${Date.now()}-${Math.random()}`, text: val, completed: false }
+                          ]);
+                          e.currentTarget.value = '';
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById('new-goal-input') as HTMLInputElement;
+                      if (input && input.value.trim()) {
+                        setCalibrationGoals(prev => [
+                          ...prev,
+                          { id: `goal-${Date.now()}-${Math.random()}`, text: input.value.trim(), completed: false }
+                        ]);
+                        input.value = '';
+                      }
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-3 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4.5 h-4.5" />
+                    <span>Добавить</span>
+                  </button>
+                </div>
+
+
+
+                {/* Goals List Manager */}
+                {calibrationGoals.length > 0 ? (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
+                    {calibrationGoals.map((goal) => (
+                      <div key={goal.id} className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50/45 group">
+                        <div className="flex items-center gap-3 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={goal.completed}
+                            onChange={() => {
+                              setCalibrationGoals(prev =>
+                                prev.map(g => g.id === goal.id ? { ...g, completed: !g.completed } : g)
+                              );
+                            }}
+                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={goal.text}
+                            onChange={(e) => {
+                              const newText = e.target.value;
+                              setCalibrationGoals(prev =>
+                                prev.map(g => g.id === goal.id ? { ...g, text: newText } : g)
+                              );
+                            }}
+                            placeholder="Название цели не должно быть пустым..."
+                            className={`flex-1 text-xs font-semibold bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-500 pb-0.5 outline-none text-slate-800 ${
+                              goal.completed ? 'line-through text-slate-400' : ''
+                            }`}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCalibrationGoals(prev => prev.filter(g => g.id !== goal.id));
+                          }}
+                          className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center p-6 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                    <p className="text-xs text-slate-400 font-medium italic">
+                      Список целей пока пуст. Добавьте первую цель вручную или выберите из готовых шаблонов выше.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Submit panel for Calibration */}
-              <div className="pt-6 border-t border-slate-200 flex justify-end gap-3 bg-slate-50 p-4 -m-6 mt-4">
+              <div className="flex justify-end gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setCalibratingEval(null)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-bold text-slate-700 cursor-pointer"
+                  className="px-5 py-2.5 bg-slate-150 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer transition-colors"
                 >
                   Отмена
                 </button>
                 <button
                   type="button"
                   onClick={saveCalibration}
-                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-750 text-white rounded-lg text-xs font-bold font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-650/10 cursor-pointer"
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-650/10 cursor-pointer transition-colors"
                 >
                   <Save className="w-4 h-4" />
                   <span>Утвердить калибровку</span>
@@ -1554,22 +1818,22 @@ export default function LeadDashboard({
                 Запуск новых сессий оценки. Анкеты будут обрабатываться индивидуально по итогам заполнения.
               </p>
             </div>
-            {!showCreateSessionForm && (
-              <button
-                onClick={() => setShowCreateSessionForm(true)}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Добавить</span>
-              </button>
+            {!showCreateSessionForm && !editingSession && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCreateSessionForm(true)}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Добавить</span>
+                </button>
+              </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
           {/* Create new Session Form */}
           {showCreateSessionForm && (
-            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 h-fit">
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 max-w-2xl">
               <h4 className="font-extrabold text-slate-900 border-b border-slate-100 pb-2.5">Запустить сбор оценок</h4>
               <form onSubmit={handleCreateSession} className="space-y-4">
                 <div className="space-y-1.5">
@@ -1584,17 +1848,17 @@ export default function LeadDashboard({
                   />
                 </div>
 
-                <div className="flex gap-2.5">
+                <div className="flex gap-2.5 justify-end">
                   <button
                     type="button"
                     onClick={() => setShowCreateSessionForm(false)}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center transition-all cursor-pointer"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center transition-all cursor-pointer"
                   >
                     Отмена
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-6 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Создать</span>
@@ -1604,88 +1868,140 @@ export default function LeadDashboard({
             </div>
           )}
 
-          {/* List of active/archive sessions (Scenario 2) */}
-          <div className={`${showCreateSessionForm ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden`}>
-            <div className="divide-y divide-slate-150">
-              {sessions.length === 0 ? (
-                <p className="text-sm text-slate-400 italic p-6 text-center">Созданных сессий нет.</p>
-              ) : (
-                sessions.map(sess => {
-                  const mappedProfile = profiles.find(p => p.id === sess.profileId);
-                  const isCopied = copiedSessionId === sess.id;
+          {/* Edit Session Form */}
+          {editingSession && (
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4 max-w-2xl">
+              <h4 className="font-extrabold text-slate-900 border-b border-slate-100 pb-2.5">Редактировать сессию</h4>
+              <form onSubmit={handleEditSession} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">Название сессии</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Название сессии"
+                    value={editSessionTitle}
+                    onChange={(e) => setEditSessionTitle(e.target.value)}
+                    className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white"
+                  />
+                </div>
 
-                  return (
-                    <div key={sess.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <strong className="text-slate-900 text-sm font-extrabold leading-normal">{sess.title}</strong>
-                          {sess.status === 'active' ? (
-                            <span className="text-sm bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded">
-                              Активна
-                            </span>
-                          ) : (
-                            <span className="text-sm bg-slate-100 text-slate-500 border border-slate-200 font-bold px-1.5 py-0.5 rounded">
-                              В архиве
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-400 font-semibold mb-1">
-                          Профиль: {sess.profileId === 'profile-general' ? 'Любой (определяется индивидуально по итогам заполнения)' : (mappedProfile ? mappedProfile.title : 'Любой (определяется индивидуально по итогам заполнения)')}
-                        </p>
-                      </div>
-
-                      {/* Control panel buttons */}
-                      <div className="flex items-center gap-1.5 text-xs">
-                        {sess.status === 'active' && (
-                          <button
-                            onClick={() => handleCopyLink(sess)}
-                            className={`px-3 py-1.5 rounded-lg border flex items-center gap-1 font-bold cursor-pointer transition-all ${
-                              isCopied
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-white hover:bg-slate-50 border-slate-200 text-indigo-600'
-                            }`}
-                            title="Скопировать ссылку"
-                          >
-                            {isCopied ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-                            <span>{isCopied ? 'Ссылка скопирована!' : 'Поделиться'}</span>
-                          </button>
-                        )}
-
-                        {sess.status === 'active' && (
-                          <button
-                            onClick={() => handleArchiveSession(sess.id)}
-                            className="bg-white hover:bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-slate-500 hover:text-slate-800 cursor-pointer"
-                            title="Архивировать"
-                          >
-                            <Archive className="w-4 h-4" />
-                          </button>
-                        )}
-
-                        <a
-                          href={`?link=designer&sessionId=${sess.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-white hover:bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
-                          title="Открыть анкету"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </a>
-
-                        <button
-                          onClick={() => handleDeleteSession(sess.id)}
-                          className="bg-white hover:bg-red-50 border border-slate-200 text-slate-400 hover:text-red-600 p-1.5 rounded-lg cursor-pointer"
-                          title="Удалить"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+                <div className="flex gap-2.5 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSession(null);
+                      setEditSessionTitle('');
+                    }}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center transition-all cursor-pointer"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-6 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Сохранить</span>
+                  </button>
+                </div>
+              </form>
             </div>
-          </div>
-        </div>
+          )}
+
+          {/* List of active/archive sessions (Scenario 2) */}
+          {!showCreateSessionForm && !editingSession && (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="divide-y divide-slate-100">
+                {sessions.length === 0 ? (
+                  <p className="text-sm text-slate-400 italic p-6 text-center">Созданных сессий нет.</p>
+                ) : (
+                  sessions.map(sess => {
+                    const mappedProfile = profiles.find(p => p.id === sess.profileId);
+                    const isCopied = copiedSessionId === sess.id;
+
+                    return (
+                      <div key={sess.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <strong className="text-slate-900 text-sm font-extrabold leading-normal">{sess.title}</strong>
+                            {sess.status === 'active' ? (
+                              <span className="text-sm bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-2 py-0.5 rounded-full">
+                                Активна
+                              </span>
+                            ) : (
+                              <span className="text-sm bg-slate-100 text-slate-500 border border-slate-200 font-bold px-2 py-0.5 rounded-full">
+                                В архиве
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-sm text-slate-500 font-normal block mt-1">
+                            {evaluations.filter(e => e.sessionId === sess.id && (e.status === 'submitted' || e.status === 'calibrated')).length} анкет
+                          </span>
+                        </div>
+
+                        {/* Control panel buttons */}
+                        <div className="flex items-center gap-1.5 text-xs">
+                          {sess.status === 'active' && (
+                            <button
+                              onClick={() => handleCopyLink(sess)}
+                              className={`px-3 py-1.5 rounded-lg border flex items-center gap-1 font-bold cursor-pointer transition-all ${
+                                isCopied
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-white hover:bg-slate-50 border-slate-200 text-indigo-600'
+                              }`}
+                              title="Скопировать ссылку"
+                            >
+                              {isCopied ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                              <span>{isCopied ? 'Ссылка скопирована!' : 'Поделиться'}</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setEditingSession(sess);
+                              setEditSessionTitle(sess.title);
+                            }}
+                            className="bg-white hover:bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-slate-500 hover:text-slate-800 cursor-pointer"
+                            title="Редактировать сессию"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+
+                          {sess.status === 'active' && (
+                            <button
+                              onClick={() => handleArchiveSession(sess.id)}
+                              className="bg-white hover:bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-slate-500 hover:text-slate-800 cursor-pointer"
+                              title="Архивировать"
+                            >
+                              <Archive className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          <a
+                            href={`?link=designer&sessionId=${sess.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-white hover:bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
+                            title="Открыть анкету"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </a>
+
+                          <button
+                            onClick={() => handleDeleteSession(sess.id)}
+                            className="bg-white hover:bg-red-50 border border-slate-200 text-slate-400 hover:text-red-600 p-1.5 rounded-lg cursor-pointer"
+                            title="Удалить"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1701,154 +2017,227 @@ export default function LeadDashboard({
                 Добавляйте профили должностей сотрудников и настраивайте уровни владения навыками
               </p>
             </div>
-            <button
-              onClick={() => startEditProfile(null)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Добавить</span>
-            </button>
+            <div className="flex gap-2">
+                <button
+                onClick={() => startEditProfile(null)}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                <Plus className="w-4 h-4" />
+                <span>Добавить</span>
+                </button>
+            </div>
           </div>
 
-          {/* Radar Chart Comparison */}
-          {sortedProfiles.length > 0 && categories.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-slate-900">Сравнение профилей</h3>
+          {/* Radar Chart Comparison & List */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {sortedProfiles.length > 0 && categories.length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit">
+                <div className="mb-6">
+                  <h3 className="text-lg font-bold text-slate-900">Сравнение профилей</h3>
+                </div>
+                <div className="h-[400px] w-full" key={activeTab}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart cx="50%" cy="50%" outerRadius="80%" data={categories.map(cat => {
+                      const row: any = { subject: cat.title };
+                      sortedProfiles.forEach(p => {
+                        const catSkills = skills.filter(s => s.categoryId === cat.id);
+                        const catReqs = p.requirements.filter(r => catSkills.some(s => s.id === r.skillId));
+                        if (catReqs.length > 0) {
+                          let weightedSum = 0;
+                          let weightTotal = 0;
+                          catReqs.forEach(r => {
+                            const skill = catSkills.find(s => s.id === r.skillId);
+                            const w = skill && skill.weight !== undefined ? skill.weight : 0.20;
+                            weightedSum += r.targetLevel * w;
+                            weightTotal += w;
+                          });
+                          const avg = weightTotal > 0 ? (weightedSum / weightTotal) : 0;
+                          row[p.id] = Math.round(avg * 10) / 10;
+                        } else {
+                          row[p.id] = 0;
+                        }
+                      });
+                      return row;
+                    })}>
+                      <PolarGrid stroke="#e2e8f0" />
+                      <PolarAngleAxis 
+                        dataKey="subject" 
+                        tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
+                      />
+                      <PolarRadiusAxis 
+                        angle={30} 
+                        domain={[0, 4]} 
+                        tick={{ fill: '#94a3b8', fontSize: 8 }}
+                      />
+                      {sortedProfiles.slice(0, 6).map((p, idx) => {
+                        const colors = [
+                          '#4f46e5', // Indigo
+                          '#10b981', // Emerald
+                          '#f59e0b', // Amber
+                          '#ef4444', // Red
+                          '#8b5cf6', // Violet
+                          '#06b6d4'  // Cyan
+                        ];
+                        const color = colors[idx % colors.length];
+                        return (
+                          <Radar
+                            key={p.id}
+                            name={p.title}
+                            dataKey={p.id}
+                            stroke={color}
+                            fill={color}
+                            fillOpacity={0.1}
+                            strokeWidth={2}
+                          />
+                        );
+                      })}
+                      <Tooltip 
+                        contentStyle={{ 
+                          borderRadius: '12px', 
+                          border: 'none', 
+                          boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                          fontSize: '11px',
+                          fontWeight: '700'
+                        }} 
+                      />
+                      <Legend 
+                        verticalAlign="bottom" 
+                        align="center"
+                        wrapperStyle={{ fontSize: '10px', fontWeight: '700', paddingTop: '20px' }}
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-              <div className="h-[400px] w-full" key={activeTab}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="80%" data={categories.map(cat => {
-                    const row: any = { subject: cat.title };
-                    sortedProfiles.forEach(p => {
-                      const catSkills = skills.filter(s => s.categoryId === cat.id);
-                      const catReqs = p.requirements.filter(r => catSkills.some(s => s.id === r.skillId));
-                      if (catReqs.length > 0) {
-                        let weightedSum = 0;
-                        let weightTotal = 0;
-                        catReqs.forEach(r => {
-                          const skill = catSkills.find(s => s.id === r.skillId);
-                          const w = skill && skill.weight !== undefined ? skill.weight : 0.20;
-                          weightedSum += r.targetLevel * w;
-                          weightTotal += w;
-                        });
-                        const avg = weightTotal > 0 ? (weightedSum / weightTotal) : 0;
-                        row[p.id] = Math.round(avg * 10) / 10;
-                      } else {
-                        row[p.id] = 0;
-                      }
-                    });
-                    return row;
-                  })}>
-                    <PolarGrid stroke="#e2e8f0" />
-                    <PolarAngleAxis 
-                      dataKey="subject" 
-                      tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
-                    />
-                    <PolarRadiusAxis 
-                      angle={30} 
-                      domain={[0, 4]} 
-                      tick={{ fill: '#94a3b8', fontSize: 8 }}
-                    />
-                    {sortedProfiles.slice(0, 6).map((p, idx) => {
-                      const colors = [
-                        '#4f46e5', // Indigo
-                        '#10b981', // Emerald
-                        '#f59e0b', // Amber
-                        '#ef4444', // Red
-                        '#8b5cf6', // Violet
-                        '#06b6d4'  // Cyan
-                      ];
-                      const color = colors[idx % colors.length];
-                      return (
-                        <Radar
-                          key={p.id}
-                          name={p.title}
-                          dataKey={p.id}
-                          stroke={color}
-                          fill={color}
-                          fillOpacity={0.1}
-                          strokeWidth={2}
-                        />
-                      );
-                    })}
-                    <Tooltip 
-                      contentStyle={{ 
-                        borderRadius: '12px', 
-                        border: 'none', 
-                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                        fontSize: '11px',
-                        fontWeight: '700'
-                      }} 
-                    />
-                    <Legend 
-                      verticalAlign="bottom" 
-                      align="center"
-                      wrapperStyle={{ fontSize: '10px', fontWeight: '700', paddingTop: '20px' }}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
+            )}
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden divide-y divide-slate-100 flex flex-col h-fit">
+              {sortedProfiles.map(p => {
+                const skillsAssoc = p.requirements.length;
+                return (
+                  <div key={p.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
+                    <div className="space-y-1 flex-1">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <strong className="text-slate-900 font-extrabold text-sm">{p.title}</strong>
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-bold">
+                          {skillsAssoc} требований в матрице
+                        </span>
+                      </div>
+                      {p.description && (
+                        <p className="text-sm text-slate-400 leading-snug select-text truncate max-w-xs">
+                          {p.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 shrink-0 items-center">
+                      <button
+                        onClick={() => startEditProfile(p)}
+                        className="bg-white hover:bg-slate-50 text-slate-700 p-2 rounded-lg border border-slate-200 cursor-pointer flex items-center justify-center transition-colors shadow-2xs"
+                        title="Редактировать"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteProfile(p.id)}
+                        className="bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-700 p-2 border border-slate-200 hover:border-rose-100 rounded-lg cursor-pointer flex items-center justify-center transition-colors shadow-2xs"
+                        title="Удалить"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* New Profile Matrix Table */}
+          {sortedProfiles.length > 0 && (
+            <div className="space-y-8 mt-6">
+              {categories.map(cat => {
+                const catSkills = skills.filter(s => s.categoryId === cat.id);
+                if (catSkills.length === 0) return null;
+
+                return (
+                  <div key={cat.id} className="bg-white shadow-sm rounded-xl overflow-hidden border border-slate-200">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 text-slate-700">
+                          <tr>
+                            <th className="p-3 font-extrabold border-b border-slate-200 whitespace-nowrap text-slate-900 w-1/3 text-sm">{cat.title}</th>
+                            {sortedProfiles.map(p => (
+                              <th key={p.id} className="p-3 font-semibold border-b border-slate-200 text-center text-xs whitespace-nowrap">{p.title}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {catSkills.map(s => (
+                            <tr key={s.id} className="hover:bg-slate-50/50">
+                              <td className="p-3">
+                                <div className="font-semibold text-slate-900">{s.title}</div>
+                                {s.description && <div className="text-xs text-slate-400 mt-0.5 font-normal">{s.description}</div>}
+                              </td>
+                              {sortedProfiles.map(p => {
+                                const req = p.requirements.find(r => r.skillId === s.id);
+                                return (
+                                  <td key={p.id} className="p-3 text-center align-middle">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="4"
+                                      className="w-12 text-center border border-slate-200 rounded p-1 font-mono text-sm"
+                                      value={req ? req.targetLevel : 0}
+                                      onChange={(e) => updateProfileRequirement(p.id, s.id, parseInt(e.target.value) || 0)}
+                                    />
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900">
+                          <tr>
+                            <td className="p-3 pl-4 text-xs font-bold uppercase tracking-wider text-slate-500">
+                              Средневзвешенное
+                            </td>
+                            {sortedProfiles.map(p => {
+                              const total = catSkills.reduce((acc, s) => {
+                                const req = p.requirements.find(r => r.skillId === s.id);
+                                return acc + (req ? req.targetLevel : 0);
+                              }, 0);
+                              const avg = total / catSkills.length;
+                              return (
+                                <td key={p.id} className="p-3 text-center font-mono text-sm font-extrabold text-indigo-700 bg-indigo-50/20">
+                                  {avg.toFixed(1)}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sortedProfiles.map(p => {
-              const skillsAssoc = p.requirements.length;
-              return (
-                <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <strong className="text-slate-900 font-extrabold text-sm block">{p.title}</strong>
-                    <p className="text-xs text-slate-405 leading-relaxed font-semibold mb-2 lines-3-capped select-text">
-                      {p.description}
-                    </p>
-                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-bold inline-block">
-                      {skillsAssoc} требований в матрице
-                    </span>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex justify-end items-center gap-1.5">
-                    <button
-                      onClick={() => startEditProfile(p)}
-                      className="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs p-1.5 rounded-lg border border-slate-200 cursor-pointer flex items-center justify-center"
-                      title="Редактировать"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteProfile(p.id)}
-                      className="bg-white hover:bg-red-50 text-slate-400 hover:text-red-700 p-1.5 border border-slate-200 rounded-lg cursor-pointer flex items-center justify-center"
-                      title="Удалить"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
       )}
 
-      {/* EDIT PROFILE DIALOG & WEIGHT CHECK MODULE (Scenario 1) */}
+      {/* EDIT PROFILE DIALOG */}
       {activeTab === 'profiles' && editingProfile && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xl space-y-6">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+          <div className="border-b border-slate-100 pb-3">
             <h3 className="font-extrabold text-slate-900">
               {editingProfile.id ? 'Редактировать профиль' : 'Создать новый профиль'}
             </h3>
-            <button
-              onClick={() => setEditingProfile(null)}
-              className="text-slate-400 hover:text-slate-700 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
 
           <form onSubmit={validateAndSaveProfile} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-750">Название профиля</label>
+                <label className="block text-xs font-bold text-slate-700">Название профиля</label>
                 <input
                   type="text"
                   required
@@ -1860,7 +2249,7 @@ export default function LeadDashboard({
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-755">След. ступень в карьере (если есть)</label>
+                <label className="block text-xs font-bold text-slate-700">Следующая ступень</label>
                 <select
                   value={profNextId}
                   onChange={(e) => setProfNextId(e.target.value)}
@@ -1875,7 +2264,7 @@ export default function LeadDashboard({
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-756">Подробное описание задач роли</label>
+              <label className="block text-xs font-bold text-slate-700">Подробное описание задач роли</label>
               <textarea
                 placeholder="Опишите ожидания бизнеса, полномочия и функции данного сотрудника в компании."
                 value={profDesc}
@@ -1886,7 +2275,6 @@ export default function LeadDashboard({
 
             {/* MATRIX OF TARGET LEVELS */}
             <div className="space-y-3">
-              <span className="text-sm font-bold tracking-wide text-slate-500 block">Матрица навыков: целевые уровни:</span>
               <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
                 {categories.length === 0 ? (
                   <p className="text-sm text-slate-400 p-5 italic text-center bg-white">Для настройки требований профиля необходимо сначала создать навык и категорию в разделе «Навыки».</p>
@@ -1897,14 +2285,14 @@ export default function LeadDashboard({
 
                     return (
                       <div key={cat.id} className="p-4 space-y-3 bg-slate-50/30">
-                        <span className="text-sm text-indigo-900 font-extrabold tracking-wider block bg-indigo-50/50 p-2 rounded">
+                        <span className="text-sm text-slate-900 font-bold tracking-wider block pb-1">
                           {cat.title}
                         </span>
                         <div className="space-y-4">
                           {catSkills.map(sk => {
                             const req = profRequirements.find(r => r.skillId === sk.id) || { skillId: sk.id, targetLevel: 0 };
                             return (
-                              <div key={sk.id} className="bg-white p-4 border border-slate-250/70 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div key={sk.id} className="bg-white p-4 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="space-y-0.5">
                                   <strong className="text-slate-800 text-sm font-bold block">{sk.title}</strong>
                                   <p className="text-sm text-slate-400 leading-normal max-w-sm font-medium">{sk.description}</p>
@@ -1913,7 +2301,7 @@ export default function LeadDashboard({
                                 <div className="flex items-center gap-6 text-sm text-slate-600">
                                   {/* Target Level Select */}
                                   <div className="space-y-1">
-                                    <span className="text-sm text-slate-400 block font-bold">Целевой уровень (0-4)</span>
+                                    <span className="text-sm text-slate-400 block font-bold">Целевой уровень</span>
                                     <select
                                       value={req.targetLevel}
                                       onChange={(e) => handleRequirementChange(sk.id, 'targetLevel', parseInt(e.target.value))}
@@ -1949,13 +2337,12 @@ export default function LeadDashboard({
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer shadow-md"
               >
                 <Save className="w-4 h-4" />
-                <span>Сохранить матрицу профиля</span>
+                <span>Сохранить</span>
               </button>
             </div>
           </form>
         </div>
       )}
-
       {/* 4. COMPETENCIES tab */}
       {activeTab === 'competencies' && !editingCategory && !editingSkill && (
         <div className="space-y-8">
@@ -1965,7 +2352,7 @@ export default function LeadDashboard({
                 Навыки
               </h1>
               <p className="text-slate-500 mt-2 text-sm max-w-2xl">
-                Управление базой навыков и категорий должностного развития. Настраивайте детальные описания и поведенческие индикаторы для каждого уровня владения.
+                Добавляйте навыки и указывайте уровень владения. Вес навыка определяет его важность при общей оценке владения категорией.
               </p>
             </div>
             <div className="flex gap-2">
@@ -2037,126 +2424,172 @@ export default function LeadDashboard({
                   const associatedSkills = skills.filter(s => s.categoryId === cat.id);
                   const sumOfWeights = associatedSkills.reduce((sum, sk) => sum + (sk.weight ?? 0), 0);
                   const isBalanced = Math.abs(sumOfWeights - 1.0) < 0.001;
+                  const isExpanded = !!expandedCategoryIds[cat.id];
+                  
+                  const getSkillsWord = (count: number) => {
+                    const lastDigit = count % 10;
+                    const lastTwoDigits = count % 100;
+                    if (lastTwoDigits >= 11 && lastTwoDigits <= 19) return 'навыков';
+                    if (lastDigit === 1) return 'навык';
+                    if (lastDigit >= 2 && lastDigit <= 4) return 'навыка';
+                    return 'навыков';
+                  };
 
                   return (
-                    <div key={cat.id} className="relative border border-slate-200 rounded-xl p-5 bg-white shadow-sm space-y-3">
-                      <div className="absolute top-4 right-4 flex gap-1 items-center">
-                        <button
-                          disabled={catIdx === 0}
-                          onClick={() => moveCategory(cat.id, 'up')}
-                          className={`bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors ${
-                            catIdx === 0 ? 'opacity-35 cursor-not-allowed hover:bg-white' : ''
-                          }`}
-                          title="Переместить категорию вверх"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          disabled={catIdx === categories.length - 1}
-                          onClick={() => moveCategory(cat.id, 'down')}
-                          className={`bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors ${
-                            catIdx === categories.length - 1 ? 'opacity-35 cursor-not-allowed hover:bg-white' : ''
-                          }`}
-                          title="Переместить категорию вниз"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => startEditCategory(cat)}
-                          className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors"
-                          title="Редактировать категорию"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <h3 className="font-bold text-lg text-slate-900 truncate pr-16 border-b pb-2">
-                        {cat.title}
-                      </h3>
-                      {cat.description && <p className="text-sm text-slate-500 mt-1">{cat.description}</p>}
-                      
-                      {/* Live Category Weight Validation display */}
-                      <div className="flex flex-row items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg mt-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                          <span className="text-sm font-bold text-slate-400 whitespace-nowrap">Балансировка весов:</span>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded transition-all text-sm font-bold font-mono ${
-                            isBalanced 
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-250/50' 
-                              : 'bg-amber-50 text-amber-700 border border-amber-250/50 animate-pulse'
-                          }`}>
-                            {sumOfWeights.toFixed(2)} / 1.00 {isBalanced ? ' (✔️ Сбалансировано)' : ' (⚠️ Требуется балансировка)'}
-                          </span>
+                    <div key={cat.id} className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden transition-all duration-200">
+                      {/* Accordion Trigger Header */}
+                      <div 
+                        onClick={() => {
+                          setExpandedCategoryIds(prev => ({
+                            ...prev,
+                            [cat.id]: !prev[cat.id]
+                          }));
+                        }}
+                        className="p-5 flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/50 select-none transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <div className="text-slate-400 shrink-0">
+                              {isExpanded ? (
+                                <ChevronUp className="w-5 h-5" />
+                              ) : (
+                                <ChevronDown className="w-5 h-5" />
+                              )}
+                            </div>
+                            <h3 className="font-bold text-base sm:text-lg text-slate-900 truncate">
+                              {cat.title}
+                            </h3>
+                            <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-500">
+                              {associatedSkills.length} {getSkillsWord(associatedSkills.length)}
+                            </span>
+                          </div>
                         </div>
-                        
-                        {associatedSkills.length > 0 && (
-                          <div className="flex items-center gap-2 shrink-0">
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-4 shrink-0">
+                          {/* We place edit actions here, but with e.stopPropagation to prevent accordion toggle */}
+                          <div className="flex gap-1 items-center" onClick={(e) => e.stopPropagation()}>
                             <button
-                              onClick={() => distributeWeightsEvenly(cat.id)}
-                              className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-205 text-sm font-bold px-2.5 py-1 rounded cursor-pointer transition-colors shadow-2xs"
-                              title="Распределить вес поровну между всеми навыками в этой категории"
+                              disabled={catIdx === 0}
+                              onClick={() => moveCategory(cat.id, 'up')}
+                              className={`bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors ${
+                                catIdx === 0 ? 'opacity-35 cursor-not-allowed hover:bg-white' : ''
+                              }`}
+                              title="Переместить категорию вверх"
                             >
-                              Авто-баланс
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              disabled={catIdx === categories.length - 1}
+                              onClick={() => moveCategory(cat.id, 'down')}
+                              className={`bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors ${
+                                catIdx === categories.length - 1 ? 'opacity-35 cursor-not-allowed hover:bg-white' : ''
+                              }`}
+                              title="Переместить категорию вниз"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => startEditCategory(cat)}
+                              className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 p-1.5 rounded-lg flex items-center justify-center cursor-pointer shadow-2xs transition-colors"
+                              title="Редактировать категорию"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                        )}
+                        </div>
                       </div>
 
-                      <div className="space-y-2 pt-1">
-                        {associatedSkills.length === 0 ? (
-                          <p className="text-sm text-slate-400 italic">Навыков в этой группе нет.</p>
-                        ) : (
-                          associatedSkills.map((sk, skIdx) => (
-                            <div key={sk.id} className="bg-white p-3.5 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 shadow-2xs hover:scale-[1.002]">
-                              <div className="space-y-0.5 flex-1 w-full truncate">
-                                <strong className="text-slate-800 text-sm font-bold block truncate">{sk.title}</strong>
-                                <p className="text-sm text-slate-450 leading-snug">{sk.description}</p>
-                              </div>
-                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t border-slate-100 sm:border-0 w-full sm:w-auto">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-sm text-slate-400 font-bold">Вес:</span>
-                                  <input
-                                    type="number"
-                                    min="0.0"
-                                    max="1.0"
-                                    step="0.05"
-                                    value={Math.round((sk.weight ?? 0.20) * 100) / 100}
-                                    onChange={(e) => updateSkillWeightDirectly(sk.id, parseFloat(e.target.value) || 0)}
-                                    className="w-14 text-center text-sm p-1 border border-slate-200 rounded-lg font-bold font-mono bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
-                                  />
-                                </div>
-                                <div className="flex gap-1">
-                                  <button
-                                    disabled={skIdx === 0}
-                                    onClick={() => moveSkill(sk.id, 'up')}
-                                    className={`bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs ${
-                                      skIdx === 0 ? 'opacity-30 cursor-not-allowed hover:bg-slate-50' : ''
-                                    }`}
-                                    title="Переместить навык вверх"
-                                  >
-                                    <ArrowUp className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    disabled={skIdx === associatedSkills.length - 1}
-                                    onClick={() => moveSkill(sk.id, 'down')}
-                                    className={`bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs ${
-                                      skIdx === associatedSkills.length - 1 ? 'opacity-30 cursor-not-allowed hover:bg-slate-50' : ''
-                                    }`}
-                                    title="Переместить навык вниз"
-                                  >
-                                    <ArrowDown className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => startEditSkill(sk)}
-                                    className="bg-slate-50 hover:bg-slate-150 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs"
-                                    title="Редактировать навык"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
+                      {/* Accordion Content (Description, Weights Balance, Skills List) */}
+                      {isExpanded && (
+                        <div className="border-t border-slate-100 p-5 bg-white space-y-4 animate-fadeIn">
+                          {cat.description && <p className="text-sm text-slate-500 leading-relaxed font-medium">{cat.description}</p>}
+                          
+                          {/* Live Category Weight Validation display */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Баланс весов:</span>
+                              <span className={`inline-flex items-center text-sm font-bold font-mono ${
+                                isBalanced 
+                                  ? 'text-emerald-700' 
+                                  : 'text-amber-700 animate-pulse'
+                              }`}>
+                                {sumOfWeights.toFixed(2)} / 1.00 {isBalanced ? ' (✔️)' : ' (⚠️)'}
+                              </span>
                             </div>
-                          ))
-                        )}
-                      </div>
+                            
+                            {associatedSkills.length > 0 && (
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => distributeWeightsEvenly(cat.id)}
+                                  className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 border border-slate-200 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                                  title="Распределить вес поровну между всеми навыками в этой категории"
+                                >
+                                  Авто
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-3 pt-1">
+                            {associatedSkills.length === 0 ? (
+                              <p className="text-sm text-slate-400 italic">Навыков в этой группе нет.</p>
+                            ) : (
+                              associatedSkills.map((sk, skIdx) => (
+                                <div key={sk.id} className="bg-white p-3.5 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 shadow-2xs hover:scale-[1.002]">
+                                  <div className="space-y-0.5 flex-1 w-full truncate">
+                                    <strong className="text-slate-800 text-sm font-bold block truncate">{sk.title}</strong>
+                                    <p className="text-sm text-slate-400 leading-snug">{sk.description}</p>
+                                  </div>
+                                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t border-slate-100 sm:border-0 w-full sm:w-auto">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm text-slate-400 font-bold">Вес:</span>
+                                      <input
+                                        type="number"
+                                        min="0.0"
+                                        max="1.0"
+                                        step="0.05"
+                                        value={Math.round((sk.weight ?? 0.20) * 100) / 100}
+                                        onChange={(e) => updateSkillWeightDirectly(sk.id, parseFloat(e.target.value) || 0)}
+                                        className="w-14 text-center text-sm p-1 border border-slate-200 rounded-lg font-bold font-mono bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                                      />
+                                    </div>
+                                    <div className="flex gap-1">
+                                      <button
+                                        disabled={skIdx === 0}
+                                        onClick={() => moveSkill(sk.id, 'up')}
+                                        className={`bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs ${
+                                          skIdx === 0 ? 'opacity-30 cursor-not-allowed hover:bg-slate-50' : ''
+                                        }`}
+                                        title="Переместить навык вверх"
+                                      >
+                                        <ArrowUp className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        disabled={skIdx === associatedSkills.length - 1}
+                                        onClick={() => moveSkill(sk.id, 'down')}
+                                        className={`bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs ${
+                                          skIdx === associatedSkills.length - 1 ? 'opacity-30 cursor-not-allowed hover:bg-slate-50' : ''
+                                        }`}
+                                        title="Переместить навык вниз"
+                                      >
+                                        <ArrowDown className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => startEditSkill(sk)}
+                                        className="bg-slate-50 hover:bg-slate-150 text-slate-700 border border-slate-200 text-sm font-bold p-1.5 rounded cursor-pointer flex items-center justify-center shadow-2xs"
+                                        title="Редактировать навык"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -2181,7 +2614,7 @@ export default function LeadDashboard({
       )}
 
       {/* EDIT CATEGORY MODAL DIALOG */}
-      {editingCategory && (
+      {activeTab === 'competencies' && editingCategory && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xl space-y-4">
           <h4 className="font-extrabold text-slate-900 border-b border-indigo-50 pb-2">
             {editingCategory.id ? 'Изменить категорию навыков' : 'Добавить категорию навыков'}
@@ -2224,7 +2657,7 @@ export default function LeadDashboard({
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteCat(false)}
-                      className="px-2.5 py-1 bg-slate-250 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                      className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold cursor-pointer transition-colors"
                     >
                       Отмена
                     </button>
@@ -2262,7 +2695,7 @@ export default function LeadDashboard({
       )}
 
       {/* EDIT SKILL MODAL DIALOG WITH BEHAVIORAL MARKERS LIST */}
-      {editingSkill && (
+      {activeTab === 'competencies' && editingSkill && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xl space-y-6">
           <h4 className="font-extrabold text-slate-900 border-b border-indigo-50 pb-2">
             {editingSkill.id ? 'Редактировать навык' : 'Добавить навык'}
@@ -2351,7 +2784,7 @@ export default function LeadDashboard({
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteSkill(false)}
-                      className="px-2.5 py-1 bg-slate-250 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                      className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold cursor-pointer transition-colors"
                     >
                       Отмена
                     </button>

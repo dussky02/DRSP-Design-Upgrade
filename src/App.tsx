@@ -291,25 +291,35 @@ export default function App() {
                 { id: 'sessions', icon: ClipboardList, label: 'Сессии' },
                 { id: 'calibrations', icon: CheckCircle2, label: 'Анкеты' },
                 { id: 'analytics', icon: Eye, label: 'Аналитика' },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setLeadSubTab(tab.id as any);
-                    if (tab.id === 'analytics') setViewMode('director-report');
-                    else setViewMode('lead');
-                    window.history.pushState({}, '', tab.id === 'analytics' ? '?link=report' : `?link=${tab.id}`);
-                  }}
-                  className={`py-4 px-4 font-bold text-sm transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-                    leadSubTab === tab.id
-                      ? 'border-indigo-600 text-indigo-600'
-                      : 'border-transparent text-slate-400 hover:text-slate-600'
-                  }`}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              ))}
+              ].map(tab => {
+                const subCount = tab.id === 'calibrations' 
+                  ? appState.evaluations.filter(e => e.status === 'submitted').length 
+                  : 0;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setLeadSubTab(tab.id as any);
+                      if (tab.id === 'analytics') setViewMode('director-report');
+                      else setViewMode('lead');
+                      window.history.pushState({}, '', tab.id === 'analytics' ? '?link=report' : `?link=${tab.id}`);
+                    }}
+                    className={`py-4 px-4 font-bold text-sm transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                      leadSubTab === tab.id
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    <tab.icon className="w-4 h-4" />
+                    <span>{tab.label}</span>
+                    {subCount > 0 && (
+                      <span className="bg-amber-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-2xs">
+                        {subCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </nav>
           </header>
 
@@ -323,6 +333,9 @@ export default function App() {
               { id: 'analytics', icon: Eye, label: 'Аналитика' },
             ].map(tab => {
               const isActive = leadSubTab === tab.id;
+              const subCount = tab.id === 'calibrations' 
+                ? appState.evaluations.filter(e => e.status === 'submitted').length 
+                : 0;
               return (
                 <button
                   key={tab.id}
@@ -336,7 +349,14 @@ export default function App() {
                     isActive ? 'text-indigo-600 font-bold' : 'text-slate-400'
                   }`}
                 >
-                  <tab.icon className={`w-5 h-5 mb-0.5 ${isActive ? 'scale-110 text-indigo-600' : 'text-slate-400'}`} />
+                  <div className="relative">
+                    <tab.icon className={`w-5 h-5 mb-0.5 ${isActive ? 'scale-110 text-indigo-600' : 'text-slate-400'}`} />
+                    {subCount > 0 && (
+                      <span className="absolute -top-1 -right-2.5 bg-amber-500 text-white text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[14px] text-center shadow-3xs">
+                        {subCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[10px] tracking-tight">{tab.label}</span>
                 </button>
               );
@@ -407,7 +427,7 @@ export default function App() {
               <div className="max-w-md mx-auto text-center py-12 p-6 bg-white border rounded-xl shadow space-y-4 animate-fadeIn">
                 <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
                 <h3 className="text-lg font-bold">Профиль не заполнен</h3>
-                <p className="text-sm text-slate-500">Дизайнер с данным идентификатором еще не заполнил свою анкету.</p>
+                <p className="text-sm text-slate-500">Сотрудник с данным идентификатором еще не заполнил свою анкету.</p>
                 <button
                   onClick={() => handleViewChange('designer', 'sess-summer-2026')}
                   className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg cursor-pointer"
@@ -419,14 +439,15 @@ export default function App() {
           }
 
           const session = appState.sessions.find(s => s.id === evaluation.sessionId) || appState.sessions[0];
-          const profile = (!session || session.profileId === 'profile-general')
+          const profileIdToUse = evaluation.profileId && evaluation.profileId !== 'profile-general' ? evaluation.profileId : (session?.profileId);
+          const profile = (!session || profileIdToUse === 'profile-general')
             ? determineMostSuitableProfile(
                 appState.categories,
                 appState.skills,
                 appState.profiles,
                 evaluation.status === 'calibrated' ? evaluation.calibratedScores : evaluation.selfScores
               )
-            : (appState.profiles.find(p => p.id === session.profileId) || appState.profiles[0]);
+            : (appState.profiles.find(p => p.id === profileIdToUse) || appState.profiles[0]);
           const nextProfile = profile && profile.nextProfileId 
             ? appState.profiles.find(p => p.id === profile.nextProfileId)
             : undefined;
@@ -439,6 +460,9 @@ export default function App() {
               nextProfile={nextProfile}
               categories={appState.categories}
               skills={appState.skills}
+              profiles={appState.profiles}
+              onUpdateState={safeSetAppState}
+              appState={appState}
             />
           );
         })()}
