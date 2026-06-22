@@ -6,7 +6,7 @@
 import React from 'react';
 import { 
   Award, TrendingUp, AlertCircle, Sparkles, BookOpen, Clock, 
-  CheckCircle2, Compass, UserCheck, Shield, HelpCircle, AlertTriangle
+  CheckCircle2, Compass, UserCheck, Shield, HelpCircle, AlertTriangle, X
 } from 'lucide-react';
 import { 
   ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, 
@@ -43,6 +43,7 @@ export default function DesignerProfile({
 
   const [showAllSuperpowers, setShowAllSuperpowers] = React.useState(false);
   const [showAllGrowthAreas, setShowAllGrowthAreas] = React.useState(false);
+  const [isGroupsModalOpen, setIsGroupsModalOpen] = React.useState(false);
 
   const handleToggleGoal = (goalId: string) => {
     if (!onUpdateState || !appState) return;
@@ -92,7 +93,7 @@ export default function DesignerProfile({
 
     const avgTarget = catReqs.reduce((sum, r) => sum + r.targetLevel, 0) / catReqs.length;
     const avgSelf = catReqs.reduce((sum, r) => {
-      return sum + (evaluation.selfScores[r.skillId] ?? 0);
+      return sum + (activeScores[r.skillId] ?? 0);
     }, 0) / catReqs.length;
 
     return {
@@ -167,46 +168,49 @@ export default function DesignerProfile({
         </div>
       </div>
 
-      {/* Card 1.5: Название профиля и её описание on separate white plate */}
+      {/* Card 1.5: Название профиля, её описание и радарная диаграмма в блоке "Твой уровень" */}
       {isCalibrated && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 animate-fadeIn">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-indigo-700 mb-1">Твой уровень</h2>
-          <h3 className="text-2xl font-black text-slate-950 mb-3">{profile.title}</h3>
-          {profile.description ? (
-            <p className="text-slate-600 text-sm md:text-base leading-relaxed max-w-4xl">{profile.description}</p>
-          ) : (
-            <p className="text-slate-400 text-sm italic">Описание профиля отсутствует.</p>
-          )}
-        </div>
-      )}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 animate-fadeIn relative">
+          {/* Matching Percentage Button in the top right corner */}
+          <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-10">
+            <button
+              onClick={() => setIsGroupsModalOpen(true)}
+              className="text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 py-1.5 rounded-full font-bold transition-all shadow-6xs hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1.5"
+              title="Показать соответствие по группам навыков"
+            >
+              <span>{overallMatch}% соответствия</span>
+            </button>
+          </div>
 
-      {/* Card 2: Процент соответствия по направлениям навыков + Радар компетенций */}
-      {isCalibrated && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 animate-fadeIn">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-            {/* Radar Chart */}
-            <div className="bg-slate-50/50 border border-slate-200 rounded-2xl p-6 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <h4 className="text-base font-black text-slate-900">
-                  Профиль развития
-                </h4>
-                <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-bold">
-                  {overallMatch}% соответствия
-                </span>
-              </div>
-              
-              <div className="flex-1 min-h-[300px]">
+          <div className="pr-32 sm:pr-0">
+            <h2 className="text-xs font-extrabold uppercase tracking-wider text-indigo-700 mb-1">Твой уровень</h2>
+            <h3 className="text-2xl font-black text-slate-950 mb-3">{profile.title}</h3>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center mt-6">
+            {/* Left side: Profile Description */}
+            <div className="space-y-4">
+              {profile.description ? (
+                <p className="text-slate-600 text-sm md:text-base leading-relaxed">{profile.description}</p>
+              ) : (
+                <p className="text-slate-400 text-sm italic">Описание профиля отсутствует.</p>
+              )}
+            </div>
+
+            {/* Right side: Radar Chart */}
+            <div className="bg-slate-50/40 border border-slate-200 rounded-2xl p-6 flex flex-col justify-center">
+              <div className="w-full h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                     <PolarGrid stroke="#e2e8f0" />
                     <PolarAngleAxis 
                       dataKey="subject" 
-                      tick={{ fill: '#64748b', fontSize: 13, fontWeight: 700 }}
+                      tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }}
                     />
                     <PolarRadiusAxis 
                       angle={30} 
                       domain={[0, 4]} 
-                      tick={{ fill: '#94a3b8', fontSize: 12 }}
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
                     />
                     <Radar
                       name={profile.title}
@@ -236,66 +240,10 @@ export default function DesignerProfile({
                     <Legend 
                       verticalAlign="bottom" 
                       align="center"
-                      wrapperStyle={{ fontSize: '14px', fontWeight: '700', paddingTop: '20px' }}
+                      wrapperStyle={{ fontSize: '12px', fontWeight: '700', paddingTop: '10px' }}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Category coverage progress */}
-            <div className="space-y-4">
-              <div className="space-y-4">
-                {categories.map(cat => {
-                  const cov = calculateCategoryCoverage(cat.id, skills, profile, activeScores);
-                  const radius = 32;
-                  const strokeWidth = 5;
-                  const circumference = 2 * Math.PI * radius;
-                  const strokeDashoffset = circumference - (cov / 100) * circumference;
-
-                  return (
-                    <div key={cat.id} className="bg-slate-50 border border-slate-200 p-5 rounded-xl flex items-center justify-between gap-6">
-                      <div className="flex-1 min-w-0">
-                        <span className="text-base font-bold text-slate-800 block mb-1">{cat.title}</span>
-                        <p className="text-sm text-slate-500 leading-relaxed">{cat.description}</p>
-                      </div>
-                      
-                      <div className="flex-shrink-0 relative flex items-center justify-center w-20 h-20">
-                        <svg className="w-20 h-20 transform -rotate-90">
-                          {/* Background channel */}
-                          <circle
-                            cx="40"
-                            cy="40"
-                            r={radius}
-                            className="text-slate-200"
-                            strokeWidth={strokeWidth}
-                            stroke="currentColor"
-                            fill="transparent"
-                          />
-                          {/* Progress circle */}
-                          <circle
-                            cx="40"
-                            cy="40"
-                            r={radius}
-                            className={`transition-all duration-500 ease-out ${
-                              cov >= 90 ? 'text-emerald-500' :
-                              cov >= 70 ? 'text-indigo-500' : 'text-amber-500'
-                            }`}
-                            strokeWidth={strokeWidth}
-                            strokeDasharray={circumference}
-                            strokeDashoffset={strokeDashoffset}
-                            strokeLinecap="round"
-                            stroke="currentColor"
-                            fill="transparent"
-                          />
-                        </svg>
-                        <span className="absolute text-sm font-bold text-slate-800">
-                          {cov}%
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
           </div>
@@ -607,6 +555,93 @@ export default function DesignerProfile({
               Лидер компетенции утвердил калибровку оценок, но список целей оставлен пустым.
             </p>
           )}
+        </div>
+      )}
+
+      {/* Modal for Group Coverage */}
+      {isGroupsModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn" id="groups-modal" onClick={() => setIsGroupsModalOpen(false)}>
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl max-w-2xl w-full p-6 space-y-6 max-h-[85vh] overflow-y-auto relative animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+            {/* Close button */}
+            <button
+              onClick={() => setIsGroupsModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Закрыть"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div>
+              <h3 className="font-extrabold text-lg text-slate-900">
+                Соответствие по группам навыков
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Процент соответствия требованиям профиля {profile.title} по каждому направлению
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {categories.map(cat => {
+                const cov = calculateCategoryCoverage(cat.id, skills, profile, activeScores);
+                const radius = 32;
+                const strokeWidth = 5;
+                const circumference = 2 * Math.PI * radius;
+                const strokeDashoffset = circumference - (cov / 100) * circumference;
+
+                return (
+                  <div key={cat.id} className="bg-slate-50 border border-slate-200 p-5 rounded-xl flex items-center justify-between gap-6">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-base font-bold text-slate-800 block mb-1">{cat.title}</span>
+                      <p className="text-sm text-slate-500 leading-relaxed">{cat.description}</p>
+                    </div>
+                    
+                    <div className="flex-shrink-0 relative flex items-center justify-center w-20 h-20">
+                      <svg className="w-20 h-20 transform -rotate-90">
+                        {/* Background channel */}
+                        <circle
+                          cx="40"
+                          cy="40"
+                          r={radius}
+                          className="text-slate-200"
+                          strokeWidth={strokeWidth}
+                          stroke="currentColor"
+                          fill="transparent"
+                        />
+                        {/* Progress circle */}
+                        <circle
+                          cx="40"
+                          cy="40"
+                          r={radius}
+                          className={`transition-all duration-500 ease-out ${
+                            cov >= 90 ? 'text-emerald-500' :
+                            cov >= 70 ? 'text-indigo-500' : 'text-amber-500'
+                          }`}
+                          strokeWidth={strokeWidth}
+                          strokeDasharray={circumference}
+                          strokeDashoffset={strokeDashoffset}
+                          strokeLinecap="round"
+                          stroke="currentColor"
+                          fill="transparent"
+                        />
+                      </svg>
+                      <span className="absolute text-sm font-bold text-slate-800">
+                        {cov}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setIsGroupsModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -8,7 +8,7 @@ import {
   Plus, Settings, BookOpen, Layers, ClipboardList, CheckCircle2, 
   Trash2, Archive, Share2, Clipboard, Edit2, Check, AlertCircle, 
   HelpCircle, Sparkles, Send, Save, ArrowLeft, RefreshCw, X, ShieldAlert, Award,
-  ChevronDown, ChevronUp, ArrowUp, ArrowDown, MessageSquareCode, Eye, Upload, Download
+  ChevronDown, ChevronUp, ArrowUp, ArrowDown, Eye, Upload, Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -2397,7 +2397,7 @@ export default function LeadDashboard({
           </div>
           
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-6 pt-2">
+            <div className="grid grid-cols-1 gap-3 pt-0">
               {categories.length === 0 ? (
                 <div className="text-center py-12 px-4 border border-slate-200 rounded-2xl bg-white max-w-xl mx-auto space-y-4 shadow-sm w-full">
                   <BookOpen className="w-12 h-12 text-slate-300 mx-auto" strokeWidth={1.5} />
