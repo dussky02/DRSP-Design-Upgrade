@@ -99,8 +99,7 @@ export default function DesignerForm({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSubmit = () => {
     if (!designerName.trim()) {
       setNameError('Пожалуйста, укажите ваши имя и фамилию для регистрации анкеты.');
       setIsNameStepActive(true);
@@ -132,7 +131,7 @@ export default function DesignerForm({
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Banner Removed */}
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-8">
+        <div className="p-8 space-y-8">
           {isNameStepActive ? (
             <>
               <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-6">{session.title}</h1>
@@ -151,6 +150,16 @@ export default function DesignerForm({
                     onChange={(e) => {
                       setDesignerName(e.target.value);
                       setNameError('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (!designerName.trim()) {
+                          setNameError('Пожалуйста, укажите ваши имя и фамилию для регистрации анкеты.');
+                          return;
+                        }
+                        setIsNameStepActive(false);
+                      }
                     }}
                     className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-4 py-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-all"
                   />
@@ -265,10 +274,10 @@ export default function DesignerForm({
                     </button>
                   ) : (
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={executeSubmit}
                       className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-6 py-3 rounded-lg cursor-pointer transform hover:scale-[1.01] active:scale-[0.99] transition-all shadow-md shadow-emerald-900/10"
                     >
-                      <Send className="w-4 h-4" />
                       <span>Отправить результаты</span>
                     </button>
                   )}
@@ -276,7 +285,7 @@ export default function DesignerForm({
               </div>
             )
           )}
-        </form>
+        </div>
       </div>
     </div>
   );
