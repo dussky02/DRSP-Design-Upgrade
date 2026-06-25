@@ -85,6 +85,20 @@ export default function LeadDashboard({
   const [calibrationActionPlan, setCalibrationActionPlan] = useState<string>('');
   const [calibrationGoals, setCalibrationGoals] = useState<GoalItem[]>([]);
 
+  const moveGoal = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === calibrationGoals.length - 1) return;
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    setCalibrationGoals(prev => {
+      const updated = [...prev];
+      const temp = updated[index];
+      updated[index] = updated[targetIndex];
+      updated[targetIndex] = temp;
+      return updated;
+    });
+  };
+
   // Radar data calculation for calibration (Scenario 10.3)
   const radarData = React.useMemo(() => {
     if (!calibratingEval) return [];
@@ -1734,7 +1748,7 @@ export default function LeadDashboard({
                 {/* Goals List Manager */}
                 {calibrationGoals.length > 0 ? (
                   <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
-                    {calibrationGoals.map((goal) => (
+                    {calibrationGoals.map((goal, goalIdx) => (
                       <div key={goal.id} className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50/45 group">
                         <div className="flex items-center gap-3 flex-1">
                           <input
@@ -1762,15 +1776,40 @@ export default function LeadDashboard({
                             }`}
                           />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCalibrationGoals(prev => prev.filter(g => g.id !== goal.id));
-                          }}
-                          className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1 md:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            disabled={goalIdx === 0}
+                            onClick={() => moveGoal(goalIdx, 'up')}
+                            className={`p-1 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer flex items-center justify-center ${
+                              goalIdx === 0 ? 'opacity-30 cursor-not-allowed hover:bg-transparent hover:text-slate-400' : ''
+                            }`}
+                            title="Переместить вверх"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={goalIdx === calibrationGoals.length - 1}
+                            onClick={() => moveGoal(goalIdx, 'down')}
+                            className={`p-1 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer flex items-center justify-center ${
+                              goalIdx === calibrationGoals.length - 1 ? 'opacity-30 cursor-not-allowed hover:bg-transparent hover:text-slate-400' : ''
+                            }`}
+                            title="Переместить вниз"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCalibrationGoals(prev => prev.filter(g => g.id !== goal.id));
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Удалить"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

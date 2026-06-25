@@ -11,10 +11,11 @@ import {
 } from 'lucide-react';
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, 
-  ResponsiveContainer, Tooltip 
+  ResponsiveContainer, Tooltip,
+  PieChart, Pie, Cell
 } from 'recharts';
 import { Category, Skill, Profile, Evaluation, Session, SkillScores } from '../types';
-import { calculateCategoryCoverage, calculateOverallCoverage, determineMostSuitableProfile } from '../utils';
+import { calculateCategoryCoverage, calculateOverallCoverage, determineMostSuitableProfile, parseActionPlan } from '../utils';
 
 interface DirectorReportProps {
   categories: Category[];
@@ -128,6 +129,69 @@ export default function DirectorReport({
       }).length
     };
   }).filter(sd => sd.deficit > 0).sort((a, b) => b.deficit - a.deficit);
+
+  // Group employees by profile for Widget 1 (Pie Chart: "Распределение")
+  const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'];
+
+  const profileDistribution = React.useMemo(() => {
+    const distribution: { [profileId: string]: { title: string; count: number } } = {};
+    
+    profiles.forEach(p => {
+      distribution[p.id] = { title: p.title, count: 0 };
+    });
+    
+    let totalCount = 0;
+    activeEvaluations.forEach(evalItem => {
+      const session = sessions.find(s => s.id === evalItem.sessionId);
+      const profile = getProfileForEvaluation(evalItem, session);
+      if (profile) {
+        if (!distribution[profile.id]) {
+          distribution[profile.id] = { title: profile.title, count: 0 };
+        }
+        distribution[profile.id].count += 1;
+        totalCount += 1;
+      }
+    });
+
+    return Object.entries(distribution).map(([id, item]) => {
+      const percentage = totalCount > 0 ? Math.round((item.count / totalCount) * 100) : 0;
+      return {
+        id,
+        name: item.title,
+        value: item.count,
+        percentage
+      };
+    }).filter(d => d.value > 0);
+  }, [activeEvaluations, sessions, profiles]);
+
+  // Average score helper for Widget 2 (Heatmap: "Матрица компетенций")
+  const getCategoryAverageScore = (evalItem: Evaluation, categoryId: string) => {
+    const catSkills = skills.filter(s => s.categoryId === categoryId);
+    if (catSkills.length === 0) return 0;
+    
+    const scores = evalItem.status === 'calibrated' ? evalItem.calibratedScores : evalItem.selfScores;
+    const sum = catSkills.reduce((acc, skill) => acc + (scores[skill.id] ?? 0), 0);
+    return Math.round((sum / catSkills.length) * 10) / 10;
+  };
+
+  const getHeatmapColorClass = (val: number) => {
+    if (val === 0) return 'bg-slate-50 text-slate-400 border border-slate-100';
+    if (val < 1.0) return 'bg-rose-50 text-rose-700 border border-rose-100';
+    if (val < 2.0) return 'bg-amber-50 text-amber-700 border border-amber-100';
+    if (val < 3.0) return 'bg-sky-50 text-sky-700 border border-sky-100';
+    return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+  };
+
+  // IDP Progress helper for Widget 3 (Table: "Прогресс ИПР")
+  const getIDPProgress = (evalItem: Evaluation) => {
+    const goals = parseActionPlan(evalItem.actionPlan || '');
+    if (goals.length === 0) {
+      return { total: 0, completed: 0, percent: 0 };
+    }
+    const completed = goals.filter(g => g.completed).length;
+    const percent = Math.round((completed / goals.length) * 100);
+    return { total: goals.length, completed, percent };
+  };
 
   // Sharing copy action
   const handleShareReport = () => {
@@ -301,6 +365,179 @@ export default function DirectorReport({
               </RadarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* Аналитические Виджеты (Распределение по профилям, Прогресс ИПР, Матрица компетенций) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Widget 1: Распределение по профилям */}
+        <div id="analytics-widget-pie" className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Распределение</h3>
+            <p className="text-xs text-slate-400 mt-1">Процентное и количественное соотношение сотрудников по профилям</p>
+          </div>
+          
+          {profileDistribution.length === 0 ? (
+            <p className="text-sm text-slate-400 italic py-8 text-center">Нет данных для построения диаграммы</p>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="w-[180px] h-[180px] shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={profileDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={75}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {profileDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: any, name: string, props: any) => [
+                        `${value} чел. (${props.payload.percentage}%)`,
+                        name
+                      ]}
+                      contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="flex-1 w-full space-y-2">
+                {profileDistribution.map((item, index) => (
+                  <div key={item.id} className="flex items-center justify-between text-xs font-semibold">
+                    <div className="flex items-center gap-2">
+                      <span 
+                        className="w-3 h-3 rounded-full shrink-0" 
+                        style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} 
+                      />
+                      <span className="text-slate-700 truncate max-w-[120px]" title={item.name}>{item.name}</span>
+                    </div>
+                    <span className="text-slate-500 font-bold shrink-0">
+                      {item.value} чел. ({item.percentage}%)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Widget 3: Прогресс ИПР */}
+        <div id="analytics-widget-idp" className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Прогресс ИПР</h3>
+              <p className="text-xs text-slate-400 mt-1">Прогресс выполнения целей индивидуальных планов развития</p>
+            </div>
+            
+            <div className="overflow-x-auto max-h-[220px] overflow-y-auto pr-1">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 text-slate-400 text-xs font-semibold">
+                    <th className="pb-2">ФИО</th>
+                    <th className="pb-2">Профиль</th>
+                    <th className="pb-2 text-right">Выполнение</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {activeEvaluations.map(evalItem => {
+                    const session = sessions.find(s => s.id === evalItem.sessionId);
+                    const profile = getProfileForEvaluation(evalItem, session);
+                    const progress = getIDPProgress(evalItem);
+                    
+                    return (
+                      <tr key={evalItem.id} className="hover:bg-slate-50/50">
+                        <td className="py-2.5 font-semibold text-slate-900 max-w-[150px] truncate" title={evalItem.designerName}>
+                          {evalItem.designerName}
+                        </td>
+                        <td className="py-2.5 text-slate-400 text-xs truncate max-w-[120px]" title={profile?.title || '—'}>
+                          {profile?.title || '—'}
+                        </td>
+                        <td className="py-2.5">
+                          {progress.total > 0 ? (
+                            <div className="flex items-center justify-end gap-2.5">
+                              <div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className="bg-emerald-500 h-full rounded-full transition-all duration-300" 
+                                  style={{ width: `${progress.percent}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold text-slate-700 w-8 text-right shrink-0">
+                                {progress.percent}%
+                              </span>
+                              <span className="text-[10px] text-slate-400 shrink-0">
+                                ({progress.completed}/{progress.total})
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic block text-right">Не назначено</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Widget 2: Матрица компетенций (Heatmap) */}
+      <div id="analytics-widget-matrix" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Матрица компетенций</h3>
+            <p className="text-xs text-slate-400 mt-1">Тепловая карта уровней навыков по группам компетенций</p>
+          </div>
+          {/* Heatmap Legend */}
+          <div className="flex items-center gap-3 flex-wrap text-[10px] font-semibold text-slate-400">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-slate-100 border border-slate-200"></span> 0 (Нет)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-rose-50 border border-rose-100"></span> 0.1 - 0.9</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-amber-50 border border-amber-100"></span> 1.0 - 1.9</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-sky-50 border border-sky-100"></span> 2.0 - 2.9</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-emerald-50 border border-emerald-100"></span> 3.0 - 4.0</span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                <th className="py-3 px-4">Сотрудник</th>
+                {categories.map(cat => (
+                  <th key={cat.id} className="py-3 px-4 text-center min-w-[120px]">
+                    {cat.title}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {activeEvaluations.map(evalItem => (
+                <tr key={evalItem.id} className="hover:bg-slate-50/50">
+                  <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
+                    {evalItem.designerName}
+                  </td>
+                  {categories.map(cat => {
+                    const val = getCategoryAverageScore(evalItem, cat.id);
+                    return (
+                      <td key={cat.id} className="py-3 px-4 text-center">
+                        <span className={`inline-block px-3 py-1.5 rounded-lg text-xs font-bold min-w-[50px] text-center transition-all ${getHeatmapColorClass(val)}`}>
+                          {val.toFixed(1)}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

@@ -84,22 +84,22 @@ export default function DesignerProfile({
   const superpowers: { skill: Skill; score: number; target: number }[] = [];
   const growthAreas: { skill: Skill; score: number; target: number; gap: number }[] = [];
 
-  // Prepare radar data (Self-Assessment vs Target)
+  // Prepare radar data (Self-Assessment vs Target) using weighted calculations
   const radarData = categories.map(cat => {
     const catSkills = skills.filter(s => s.categoryId === cat.id);
-    const catReqs = profile.requirements.filter(r => catSkills.some(s => s.id === r.skillId));
-    
-    if (catReqs.length === 0) return null;
+    if (catSkills.length === 0) return null;
 
-    const avgTarget = catReqs.reduce((sum, r) => sum + r.targetLevel, 0) / catReqs.length;
-    const avgSelf = catReqs.reduce((sum, r) => {
-      return sum + (activeScores[r.skillId] ?? 0);
-    }, 0) / catReqs.length;
+    const weightSum = catSkills.reduce((sum, s) => sum + (s.weight ?? 0.20), 0);
+    const catSelf = catSkills.reduce((sum, s) => sum + ((activeScores[s.id] ?? 0) * (s.weight ?? 0.20)), 0) / (weightSum || 1);
+    const catTarget = catSkills.reduce((sum, s) => {
+      const req = profile.requirements.find(r => r.skillId === s.id);
+      return sum + ((req?.targetLevel ?? 0) * (s.weight ?? 0.20));
+    }, 0) / (weightSum || 1);
 
     return {
       subject: cat.title,
-      [profile.title]: Math.round(avgTarget * 10) / 10,
-      'Моя': Math.round(avgSelf * 10) / 10,
+      [profile.title]: Number(catTarget.toFixed(1)),
+      'Моя': Number(catSelf.toFixed(1)),
       fullMark: 4
     };
   }).filter(Boolean);

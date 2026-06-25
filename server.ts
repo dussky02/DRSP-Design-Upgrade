@@ -14,10 +14,58 @@ import {
   INITIAL_SESSIONS, 
   INITIAL_EVALUATIONS 
 } from './src/initialData';
+import { Firestore } from '@google-cloud/firestore';
 
 const STATE_FILE_PATH = path.join(process.cwd(), 'state-db.json');
 
-function loadState() {
+// Initialize Firestore
+let firestore: Firestore | null = null;
+try {
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(configPath)) {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (config.projectId && config.firestoreDatabaseId) {
+      firestore = new Firestore({
+        projectId: config.projectId,
+        databaseId: config.firestoreDatabaseId,
+      });
+      console.log(`Firestore initialized for project: ${config.projectId}, db: ${config.firestoreDatabaseId}`);
+    }
+  }
+} catch (e) {
+  console.error('Failed to initialize Firestore', e);
+}
+
+async function loadState() {
+  // Try loading from Firestore first
+  if (firestore) {
+    try {
+      const docRef = firestore.collection('app').doc('state');
+      const doc = await docRef.get();
+      if (doc.exists) {
+        const data = doc.data();
+        if (data && data.categories && data.skills) {
+          console.log('State loaded successfully from Firestore');
+          return data;
+        }
+      } else {
+        console.log('No state document found in Firestore. Creating initial state.');
+        const defaultState = {
+          categories: INITIAL_CATEGORIES,
+          skills: INITIAL_SKILLS,
+          profiles: INITIAL_PROFILES,
+          sessions: INITIAL_SESSIONS,
+          evaluations: INITIAL_EVALUATIONS
+        };
+        await docRef.set(defaultState);
+        return defaultState;
+      }
+    } catch (e) {
+      console.error('Error loading state from Firestore, falling back to local file', e);
+    }
+  }
+
+  // Fallback to local file
   if (fs.existsSync(STATE_FILE_PATH)) {
     try {
       const dataStr = fs.readFileSync(STATE_FILE_PATH, 'utf8');
@@ -40,11 +88,23 @@ function loadState() {
   };
 }
 
-function saveState(state: any) {
+async function saveState(state: any) {
+  // Always save to local file as backup/local storage
   try {
     fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2), 'utf8');
   } catch (e) {
     console.error('Error saving state to state-db.json', e);
+  }
+
+  // Save to Firestore if available
+  if (firestore) {
+    try {
+      const docRef = firestore.collection('app').doc('state');
+      await docRef.set(state);
+      console.log('State saved successfully to Firestore');
+    } catch (e) {
+      console.error('Error saving state to Firestore', e);
+    }
   }
 }
 
@@ -56,15 +116,15 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
 
   // API router endpoints
-  app.get('/api/state', (req, res) => {
-    const state = loadState();
+  app.get('/api/state', async (req, res) => {
+    const state = await loadState();
     res.json(state);
   });
 
-  app.post('/api/state', (req, res) => {
+  app.post('/api/state', async (req, res) => {
     const newState = req.body;
     if (newState && newState.categories && newState.skills) {
-      saveState(newState);
+      await saveState(newState);
       res.json({ success: true });
     } else {
       res.status(400).json({ error: 'Invalid state data' });
